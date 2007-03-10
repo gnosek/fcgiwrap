@@ -71,12 +71,41 @@ static void fcgi_pass(int fd_stdin, int fd_stdout, int fd_stderr)
 	}
 }
 
+int check_file_perms(const char *path)
+{
+	struct stat ls;
+	struct stat fs;
+
+	if (lstat(path, &ls) < 0) {
+		return -ENOENT;
+	} else if (S_ISREG(ls.st_mode)) {
+		if (ls.st_mode & S_IXUSR) {
+			return 0;
+		} else {
+			return -EACCES;
+		}
+	} else if (!S_ISLNK(ls.st_mode)) {
+		return -EACCES;
+	}
+
+	if (stat(path, &fs) < 0) {
+		return -ENOENT;
+	} else if (S_ISREG(fs.st_mode)) {
+		if (fs.st_mode & S_IXUSR) {
+			return 0;
+		} else {
+			return -EACCES;
+		}
+	} else {
+		return -EACCES;
+	}
+}
+
 char *get_cgi_filename()
 {
 	int buflen = 1, docrootlen;
 	char *buf;
 	char *docroot, *scriptname, *p;
-	struct stat s;
 
 	if ((p = getenv("DOCUMENT_ROOT"))) {
 		docroot = p;
@@ -99,15 +128,14 @@ char *get_cgi_filename()
 	strcpy(buf + docrootlen, scriptname);
 
 	while(1) {
-		if (lstat(buf, &s) == 0) {
-			if (!S_ISREG(s.st_mode) || ((s.st_mode & S_IXOTH) == 0))
-				return NULL; /* 403 */
-
-			return buf;
+		switch(check_file_perms(buf)) {
+			case -EACCES: return NULL;
+			case 0: return buf;
+			default:
+				p = strrchr(buf, '/');
+				if (!p) return NULL;
+				*p = 0;
 		}
-		p = strrchr(buf, '/');
-		if (!p) break;
-			*p = 0;
 	}
 
 	return NULL;
