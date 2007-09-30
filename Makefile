@@ -1,9 +1,11 @@
 all: fcgiwrap
-go: all
-	../../bin/spawn-fcgi -u admin -f ./fcgiwrap -a 172.16.0.2 -p 14017
+install: all
+	[ -f /usr/local/bin/fcgiwrap ] && mv /usr/local/bin/fcgiwrap /usr/local/bin/fcgiwrap~
+	cp fcgiwrap /usr/local/bin
+	rm /usr/local/bin/fcgiwrap~
 
 fcgiwrap: fcgiwrap.c
-	gcc -Wall -Werror -pedantic -O2 -g fcgiwrap.c -o fcgiwrap -lfcgi
+	gcc -Wall -Wextra -Werror -pedantic -O2 -g3 fcgiwrap.c -o fcgiwrap -lfcgi
 
 clean:
 	-rm fcgiwrap
