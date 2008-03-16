@@ -236,6 +236,7 @@ static void handle_fcgi_request()
 	int pipe_out[2];
 	int pipe_err[2];
 	char *filename;
+	char *last_slash;
 	pid_t pid;
 
 	struct fcgi_context fc;
@@ -254,6 +255,20 @@ static void handle_fcgi_request()
 				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
 				exit(99);
 			}
+
+			last_slash = strrchr(filename, '/');
+			if (!last_slash) {
+				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
+				exit(99);
+			}
+
+			*last_slash = 0;
+			if (chdir(filename) < 0) {
+				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
+				exit(99);
+			}
+			*last_slash = '/';
+
 			close(pipe_in[1]);
 			close(pipe_out[0]);
 			close(pipe_err[0]);
