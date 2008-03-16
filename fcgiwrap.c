@@ -90,6 +90,25 @@ static const char * fcgi_pass_fd(int *fdp, FCGI_FILE *ffp, char *buf, size_t buf
 	return NULL;
 }
 
+static const char * fcgi_pass_raw_fd(int *fdp, int fd_out, char *buf, size_t bufsize)
+{
+	ssize_t nread;
+
+	nread = read(*fdp, buf, bufsize);
+	if (nread > 0) {
+		if (write_all(fd_out, buf, nread) != nread) {
+			return "writing CGI reply";
+		}
+	} else {
+		if (nread < 0) {
+			return "reading CGI reply";
+		}
+		close(*fdp);
+		*fdp = -1;
+	}
+	return NULL;
+}
+
 static void fcgi_pass(struct fcgi_context *fc)
 {
 	char buf[FCGI_BUF_SIZE];
@@ -129,12 +148,11 @@ static void fcgi_pass(struct fcgi_context *fc)
 			fc->have_reply = 1;
 		}
 		if (fc->fd_stderr >= 0 && FD_ISSET(fc->fd_stderr, &rset)) {
-			err = fcgi_pass_fd(&fc->fd_stderr, FCGI_stderr, buf, sizeof(buf));
+			err = fcgi_pass_raw_fd(&fc->fd_stderr, 2, buf, sizeof(buf));
 			if (err) {
 				fcgi_finish(fc, err);
 				return;
 			}
-			fc->have_reply = 1; /* ? */
 		}
 	}
 
