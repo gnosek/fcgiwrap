@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 #define FCGI_BUF_SIZE 4096
 
@@ -28,6 +29,8 @@ static int write_all(int fd, char *buf, size_t size)
 	return size;
 }
 
+#define MAX_VA_SENTINEL INT_MIN
+
 static int max_va(int p1, ...)
 {
 	va_list va;
@@ -39,7 +42,7 @@ static int max_va(int p1, ...)
 		p = va_arg(va, int);
 		if (p > max)
 			max = p;
-	} while (p >= 0);
+	} while (p != MAX_VA_SENTINEL);
 	va_end(va);
 
 	return max;
@@ -92,7 +95,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 	char buf[FCGI_BUF_SIZE];
 	ssize_t nread;
 	fd_set rset;
-	int maxfd = max_va(fc->fd_stdout, fc->fd_stderr, -1);
+	int maxfd = max_va(fc->fd_stdout, fc->fd_stderr, MAX_VA_SENTINEL);
 	int nready;
 	const char *err;
 
