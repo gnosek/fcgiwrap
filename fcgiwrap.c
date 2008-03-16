@@ -114,7 +114,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 	char buf[FCGI_BUF_SIZE];
 	ssize_t nread;
 	fd_set rset;
-	int maxfd = max_va(fc->fd_stdout, fc->fd_stderr, MAX_VA_SENTINEL);
+	int maxfd = 1 + max_va(fc->fd_stdout, fc->fd_stderr, MAX_VA_SENTINEL);
 	int nready;
 	const char *err;
 
