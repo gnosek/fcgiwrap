@@ -163,7 +163,7 @@ static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *f
 
 	nread = read(*fdp, buf, bufsize);
 	if (nread > 0) {
-		while (p <= buf + nread) {
+		while (p < buf + nread) {
 			if (*p == '\r') {
 				cclass = CC_CR;
 			} else if (*p == '\n') {
