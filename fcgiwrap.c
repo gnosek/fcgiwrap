@@ -73,17 +73,27 @@ static int max_va(int p1, ...)
 	return max;
 }
 
+enum reply_state_t {
+	REPLY_STATE_INIT,
+	REPLY_STATE_HEADER,
+	REPLY_STATE_CR,
+	REPLY_STATE_LF,
+	REPLY_STATE_2CR,
+	REPLY_STATE_2LF,
+	REPLY_STATE_BODY
+};
+
 struct fcgi_context {
 	int fd_stdin;
 	int fd_stdout;
 	int fd_stderr;
-	int have_reply;
+	unsigned int reply_state;
 	pid_t cgi_pid;
 };
 
 static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 {
-	if (!fc->have_reply) {
+	if (fc->reply_state == REPLY_STATE_INIT) {
 		FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
 		FCGI_printf("An error occurred while %s\n", msg);
 	}
@@ -96,14 +106,84 @@ static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 		kill(SIGTERM, fc->cgi_pid);
 }
 
-static const char * fcgi_pass_fd(int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
+static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
 {
 	ssize_t nread;
+	char *p = buf;
 
 	nread = read(*fdp, buf, bufsize);
 	if (nread > 0) {
-		if (FCGI_fwrite(buf, 1, nread, ffp) != (size_t) nread) {
-			return "writing CGI reply";
+		while (p <= buf + nread) {
+			switch(fc->reply_state) {
+				case REPLY_STATE_INIT:
+					if (*p == '\r' || *p == '\n') return "parsing CGI reply (CR or LF as first character)";
+					fc->reply_state = REPLY_STATE_HEADER;
+					break;
+
+				case REPLY_STATE_HEADER:
+					if (*p == '\r') {
+						fc->reply_state = REPLY_STATE_CR;
+					} else if (*p == '\n') {
+						if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
+						fc->reply_state = REPLY_STATE_LF;
+					}
+					break;
+
+				case REPLY_STATE_CR:
+					if (*p == '\r') {
+						goto next_char;
+					} else if (*p == '\n') {
+						fc->reply_state = REPLY_STATE_LF;
+					} else {
+						if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
+						fc->reply_state = REPLY_STATE_HEADER;
+					}
+					break;
+
+				case REPLY_STATE_LF:
+					if (*p == '\r') {
+						fc->reply_state = REPLY_STATE_2CR;
+					} else if (*p == '\n') {
+						if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
+						fc->reply_state = REPLY_STATE_2LF;
+					} else {
+						fc->reply_state = REPLY_STATE_HEADER;
+					}
+					break;
+
+				case REPLY_STATE_2CR:
+					if (*p == '\r') {
+						goto next_char;
+					} else if (*p == '\n') {
+						fc->reply_state = REPLY_STATE_2LF;
+					} else {
+						if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
+						fc->reply_state = REPLY_STATE_BODY;
+					}
+					break;
+
+				case REPLY_STATE_2LF:
+					if (*p == '\r' || *p == '\n')
+						goto next_char;
+					fc->reply_state = REPLY_STATE_BODY;
+					/* FALLTHROUGH */
+
+				case REPLY_STATE_BODY:
+					goto out_of_loop;
+			}
+
+
+			if (FCGI_fputc(*p, ffp) == EOF) {
+				return "writing CGI reply";
+			}
+next_char:
+			p++;
+		}
+out_of_loop:
+		if (p < buf + nread) {
+			if (FCGI_fwrite(p, 1, buf + nread - p, ffp) != (size_t)(buf + nread - p)) {
+				return "writing CGI reply";
+			}
 		}
 	} else {
 		if (nread < 0) {
@@ -112,6 +192,7 @@ static const char * fcgi_pass_fd(int *fdp, FCGI_FILE *ffp, char *buf, size_t buf
 		close(*fdp);
 		*fdp = -1;
 	}
+
 	return NULL;
 }
 
@@ -165,12 +246,11 @@ static void fcgi_pass(struct fcgi_context *fc)
 			return;
 		}
 		if (fc->fd_stdout >= 0 && FD_ISSET(fc->fd_stdout, &rset)) {
-			err = fcgi_pass_fd(&fc->fd_stdout, FCGI_stdout, buf, sizeof(buf));
+			err = fcgi_pass_fd(fc, &fc->fd_stdout, FCGI_stdout, buf, sizeof(buf));
 			if (err) {
 				fcgi_finish(fc, err);
 				return;
 			}
-			fc->have_reply = 1;
 		}
 		if (fc->fd_stderr >= 0 && FD_ISSET(fc->fd_stderr, &rset)) {
 			err = fcgi_pass_raw_fd(&fc->fd_stderr, 2, buf, sizeof(buf));
@@ -376,7 +456,7 @@ static void handle_fcgi_request()
 			fc.fd_stdin = pipe_in[1];
 			fc.fd_stdout = pipe_out[0];
 			fc.fd_stderr = pipe_err[0];
-			fc.have_reply = 0;
+			fc.reply_state = REPLY_STATE_INIT;
 			fc.cgi_pid = pid;
 
 			fcgi_pass(&fc);
