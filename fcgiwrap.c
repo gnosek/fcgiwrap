@@ -12,6 +12,31 @@
 #include <sys/stat.h>
 #include <limits.h>
 
+extern char **environ;
+static char * const * inherited_environ;
+
+static const char * blacklisted_env_vars[] = {
+	"AUTH_TYPE",
+	"CONTENT_LENGTH",
+	"CONTENT_TYPE",
+	"GATEWAY_INTERFACE",
+	"PATH_INFO",
+	"PATH_TRANSLATED",
+	"QUERY_STRING",
+	"REMOTE_ADDR",
+	"REMOTE_HOST",
+	"REMOTE_IDENT",
+	"REMOTE_USER",
+	"REQUEST_METHOD",
+	"SCRIPT_NAME",
+	"SERVER_NAME",
+	"SERVER_PORT",
+	"SERVER_PROTOCOL",
+	"SERVER_SOFTWARE",
+	NULL,
+};
+
+
 #define FCGI_BUF_SIZE 4096
 
 static int write_all(int fd, char *buf, size_t size)
@@ -251,6 +276,46 @@ err:
 	return NULL;
 }
 
+static int blacklisted_env(const char *var_name, const char *var_name_end)
+{
+	const char **p;
+
+	if (var_name_end - var_name > 4 && !strncmp(var_name, "HTTP", 4)) {
+		/* HTTP_*, HTTPS */
+		return 1;
+	}
+
+	for (p = blacklisted_env_vars; *p; p++) {
+		if (!strcmp(var_name, *p)) {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+static void inherit_environment()
+{
+	char * const * p;
+	char *q;
+
+	for (p = inherited_environ; *p; p++) {
+		q = strchr(*p, '=');
+		if (!q) {
+			fprintf(stderr, "Suspect value in environment: %s\n", *p);
+			continue;
+		}
+		*q = 0;
+
+		if (!getenv(*p) && !blacklisted_env(*p, q)) {
+			*q = '=';
+			putenv(*p);
+		}
+
+		*q = '=';
+	}
+}
+
 static void handle_fcgi_request()
 {
 	int pipe_in[2];
@@ -272,6 +337,7 @@ static void handle_fcgi_request()
 
 		case 0: /* child */
 			filename = get_cgi_filename();
+			inherit_environment();
 			if (!filename) {
 				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
 				exit(99);
@@ -339,6 +405,8 @@ int main(/* int argc, char **argv */)
 {
 	signal(SIGCHLD, SIG_IGN);
 	signal(SIGPIPE, SIG_IGN);
+
+	inherited_environ = environ;
 
 	while (FCGI_Accept() >= 0) {
 		handle_fcgi_request();
