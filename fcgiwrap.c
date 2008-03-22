@@ -80,7 +80,56 @@ enum reply_state_t {
 	REPLY_STATE_LF,
 	REPLY_STATE_2CR,
 	REPLY_STATE_2LF,
-	REPLY_STATE_BODY
+	REPLY_STATE_BODY,
+	REPLY_STATE_MAX
+};
+
+enum char_class_t {
+	CC_NORMAL,
+	CC_CR,
+	CC_LF,
+	CC_MAX
+};
+
+#define ACTION_MASK	(15 << 4)
+#define ACTION_EMIT	0
+#define ACTION_ERROR	(1 << 4)
+#define ACTION_END	(2 << 4)
+#define ACTION_SKIP	(3 << 4)
+#define ACTION_EXTRA_CR	(4 << 4)
+#define ACTION_EXTRA_LF	(5 << 4)
+
+static const unsigned char header_state_machine[REPLY_STATE_MAX][CC_MAX] = {
+	[REPLY_STATE_INIT] = {
+		[CC_NORMAL] = REPLY_STATE_HEADER,
+		[CC_CR] = ACTION_ERROR,
+		[CC_LF] = ACTION_ERROR,
+	},
+	[REPLY_STATE_HEADER] = {
+		[CC_NORMAL] = REPLY_STATE_HEADER,
+		[CC_CR] = REPLY_STATE_CR,
+		[CC_LF] = REPLY_STATE_LF | ACTION_EXTRA_CR,
+	},
+	[REPLY_STATE_CR] = {
+		[CC_NORMAL] = REPLY_STATE_HEADER | ACTION_EXTRA_LF,
+		[CC_CR] = REPLY_STATE_CR | ACTION_SKIP,
+		[CC_LF] = REPLY_STATE_LF,
+	},
+	[REPLY_STATE_LF] = {
+		[CC_NORMAL] = REPLY_STATE_HEADER,
+		[CC_CR] = REPLY_STATE_2CR,
+		[CC_LF] = REPLY_STATE_2LF | ACTION_EXTRA_CR,
+	},
+	[REPLY_STATE_2CR] = {
+		[CC_NORMAL] = REPLY_STATE_BODY | ACTION_EXTRA_LF,
+		[CC_CR] = REPLY_STATE_CR | ACTION_SKIP,
+		[CC_LF] = REPLY_STATE_2LF,
+	},
+	[REPLY_STATE_2LF] = {
+		[CC_NORMAL] = REPLY_STATE_BODY | ACTION_END,
+		[CC_CR] = REPLY_STATE_2LF | ACTION_SKIP,
+		[CC_LF] = REPLY_STATE_2LF | ACTION_SKIP,
+	},
 };
 
 struct fcgi_context {
@@ -110,69 +159,38 @@ static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *f
 {
 	ssize_t nread;
 	char *p = buf;
+	unsigned char cclass, next_state;
 
 	nread = read(*fdp, buf, bufsize);
 	if (nread > 0) {
 		while (p <= buf + nread) {
-			switch(fc->reply_state) {
-				case REPLY_STATE_INIT:
-					if (*p == '\r' || *p == '\n') return "parsing CGI reply (CR or LF as first character)";
-					fc->reply_state = REPLY_STATE_HEADER;
-					break;
-
-				case REPLY_STATE_HEADER:
-					if (*p == '\r') {
-						fc->reply_state = REPLY_STATE_CR;
-					} else if (*p == '\n') {
-						if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
-						fc->reply_state = REPLY_STATE_LF;
-					}
-					break;
-
-				case REPLY_STATE_CR:
-					if (*p == '\r') {
-						goto next_char;
-					} else if (*p == '\n') {
-						fc->reply_state = REPLY_STATE_LF;
-					} else {
-						if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
-						fc->reply_state = REPLY_STATE_HEADER;
-					}
-					break;
-
-				case REPLY_STATE_LF:
-					if (*p == '\r') {
-						fc->reply_state = REPLY_STATE_2CR;
-					} else if (*p == '\n') {
-						if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
-						fc->reply_state = REPLY_STATE_2LF;
-					} else {
-						fc->reply_state = REPLY_STATE_HEADER;
-					}
-					break;
-
-				case REPLY_STATE_2CR:
-					if (*p == '\r') {
-						goto next_char;
-					} else if (*p == '\n') {
-						fc->reply_state = REPLY_STATE_2LF;
-					} else {
-						if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
-						fc->reply_state = REPLY_STATE_BODY;
-					}
-					break;
-
-				case REPLY_STATE_2LF:
-					if (*p == '\r' || *p == '\n')
-						goto next_char;
-					fc->reply_state = REPLY_STATE_BODY;
-					/* FALLTHROUGH */
-
-				case REPLY_STATE_BODY:
-					goto out_of_loop;
+			if (*p == '\r') {
+				cclass = CC_CR;
+			} else if (*p == '\n') {
+				cclass = CC_LF;
+			} else {
+				cclass = CC_NORMAL;
 			}
+			next_state = header_state_machine[fc->reply_state][cclass];
+			fc->reply_state = next_state & ~ACTION_MASK;
+			switch(next_state & ACTION_MASK) {
+				case ACTION_ERROR:
+					return "parsing CGI reply";
 
+				case ACTION_END:
+					goto out_of_loop;
 
+				case ACTION_SKIP:
+					goto next_char;
+
+				case ACTION_EXTRA_CR:
+					if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
+					break;
+
+				case ACTION_EXTRA_LF:
+					if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
+					break;
+			}
 			if (FCGI_fputc(*p, ffp) == EOF) {
 				return "writing CGI reply";
 			}

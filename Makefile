@@ -5,7 +5,7 @@ install: all
 	rm /usr/local/bin/fcgiwrap~
 
 fcgiwrap: fcgiwrap.c
-	gcc -Wall -Wextra -Werror -pedantic -O2 -g3 fcgiwrap.c -o fcgiwrap -lfcgi
+	gcc -std=gnu99 -Wall -Wextra -Werror -pedantic -O2 -g3 fcgiwrap.c -o fcgiwrap -lfcgi
 
 clean:
 	-rm fcgiwrap
