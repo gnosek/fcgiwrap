@@ -131,6 +131,11 @@ static const unsigned char header_state_machine[REPLY_STATE_MAX][CC_MAX] = {
 		[CC_CR] = REPLY_STATE_2LF | ACTION_SKIP,
 		[CC_LF] = REPLY_STATE_2LF | ACTION_SKIP,
 	},
+	[REPLY_STATE_BODY] = {
+		[CC_NORMAL] = REPLY_STATE_BODY | ACTION_END,
+		[CC_CR] = REPLY_STATE_BODY | ACTION_END,
+		[CC_LF] = REPLY_STATE_BODY | ACTION_END,
+	},
 };
 
 struct fcgi_context {
