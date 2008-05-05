@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <stdbool.h>
 
 extern char **environ;
 static char * const * inherited_environ;
@@ -233,24 +234,34 @@ static const char * fcgi_pass_raw_fd(int *fdp, int fd_out, char *buf, size_t buf
 	return NULL;
 }
 
-static void fcgi_pass(struct fcgi_context *fc)
+static bool fcgi_pass_request(struct fcgi_context *fc)
 {
 	char buf[FCGI_BUF_SIZE];
 	ssize_t nread;
-	fd_set rset;
-	int maxfd = 1 + max_va(fc->fd_stdout, fc->fd_stderr, MAX_VA_SENTINEL);
-	int nready;
-	const char *err;
 
 	/* eat the whole request and pass it to CGI */
 	while ((nread = FCGI_fread(buf, 1, sizeof(buf), FCGI_stdin)) > 0) {
 		if (write_all(fc->fd_stdin, buf, nread) <= 0) {
 			fcgi_finish(fc, "reading the request");
-			return;
+			return false;
 		}
 	}
 	close(fc->fd_stdin);
 	fc->fd_stdin = -1;
+
+	return true;
+}
+
+static void fcgi_pass(struct fcgi_context *fc)
+{
+	char buf[FCGI_BUF_SIZE];
+	fd_set rset;
+	int maxfd = 1 + max_va(fc->fd_stdout, fc->fd_stderr, MAX_VA_SENTINEL);
+	int nready;
+	const char *err;
+
+	if (!fcgi_pass_request(fc))
+		return;
 
 	/* now pass CGI reply back */
 	while (fc->fd_stdout >= 0 && fc->fd_stderr >= 0) {
