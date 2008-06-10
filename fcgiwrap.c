@@ -269,7 +269,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 		return;
 
 	/* now pass CGI reply back */
-	while (fc->fd_stdout >= 0 && fc->fd_stderr >= 0) {
+	while (fc->fd_stdout >= 0 || fc->fd_stderr >= 0) {
 		FD_ZERO(&rset);
 		if (fc->fd_stdout >= 0) FD_SET(fc->fd_stdout, &rset);
 		if (fc->fd_stderr >= 0) FD_SET(fc->fd_stderr, &rset);
