@@ -478,6 +478,8 @@ static void handle_fcgi_request()
 			dup2(pipe_out[1], 1);
 			dup2(pipe_err[1], 2);
 
+			signal(SIGCHLD, SIG_DFL);
+			signal(SIGPIPE, SIG_DFL);
 			execl(filename, filename, NULL);
 			puts("Status: 502 Bad Gateway\nContent-type: text/plain\n\n502");
 			exit(99);
