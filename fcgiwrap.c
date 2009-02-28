@@ -433,6 +433,18 @@ static void inherit_environment()
 	}
 }
 
+static void error_403(const char *reason, const char *filename)
+{
+	FCGI_fputs("Status: 403 Forbidden\nContent-type: text/plain\n\n403", FCGI_stdout);
+	if (filename) {
+		FCGI_fprintf(FCGI_stderr, "%s (%s)\n", reason, filename);
+	} else {
+		FCGI_fputs(reason, FCGI_stderr);
+		FCGI_fputc('\n', FCGI_stderr);
+	}
+	exit(99);
+}
+
 static void handle_fcgi_request()
 {
 	int pipe_in[2];
@@ -455,22 +467,17 @@ static void handle_fcgi_request()
 		case 0: /* child */
 			filename = get_cgi_filename();
 			inherit_environment();
-			if (!filename) {
-				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
-				exit(99);
-			}
+			if (!filename)
+				error_403("Cannot get script name, is DOCUMENT_ROOT and SCRIPT_NAME set and is the script executable?", NULL);
 
 			last_slash = strrchr(filename, '/');
-			if (!last_slash) {
-				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
-				exit(99);
-			}
+			if (!last_slash)
+				error_403("Script name must be a fully qualified path", filename);
 
 			*last_slash = 0;
-			if (chdir(filename) < 0) {
-				puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
-				exit(99);
-			}
+			if (chdir(filename) < 0)
+				error_403("Cannot chdir to script directory", filename);
+
 			*last_slash = '/';
 
 			close(pipe_in[1]);
