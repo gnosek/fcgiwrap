@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <fcgi_stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <fcntl.h>
@@ -12,6 +13,8 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <sys/wait.h>
+#include <ctype.h>
 
 extern char **environ;
 static char * const * inherited_environ;
@@ -517,7 +520,7 @@ err_pipein:
 	FCGI_puts("System error");
 }
 
-int main(/* int argc, char **argv */)
+static void fcgiwrap_main(void)
 {
 	signal(SIGCHLD, SIG_IGN);
 	signal(SIGPIPE, SIG_IGN);
@@ -527,7 +530,83 @@ int main(/* int argc, char **argv */)
 	while (FCGI_Accept() >= 0) {
 		handle_fcgi_request();
 	}
-
-	return 0;
 }
 
+static volatile sig_atomic_t nrunning;
+
+static void sigchld_handler(int dummy)
+{
+	int status;
+
+	while ((dummy = waitpid(-1, &status, WNOHANG)) != -1) {
+		/* sanity check */
+		if (nrunning > 0)
+			nrunning--;
+
+		/* we _should_ print something about the exit code
+		 * but the sighandler context is _very_ bad for this
+		 */
+	}
+}
+
+static void prefork(int nchildren)
+{
+	int startup = 1;
+
+	if (nchildren == 1) {
+		return;
+	}
+
+	signal(SIGCHLD, sigchld_handler);
+
+	while (1) {
+		while (nrunning < nchildren) {
+			pid_t pid = fork();
+			if (pid == 0) {
+				return;
+			} else if (pid != -1) {
+				nrunning++;
+			} else {
+				if (startup) {
+					fprintf(stderr, "Failed to prefork: %s\n", strerror(errno));
+					exit(1);
+				} else {
+					fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
+					break;
+				}
+			}
+		}
+		startup = 0;
+		pause();
+	}
+}
+
+int main(int argc, char **argv)
+{
+	int nchildren = 1;
+	int c;
+
+	while ((c = getopt(argc, argv, "c:")) != -1) {
+		switch (c) {
+			case 'c':
+				nchildren = atoi(optarg);
+				break;
+			case '?':
+				if (optopt == 'c')
+					fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+				else if (isprint(optopt))
+					fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+				else
+					fprintf(stderr,
+						"Unknown option character `\\x%x'.\n",
+						optopt);
+				return 1;
+			default:
+				abort();
+		}
+	}
+
+	prefork(nchildren);
+	fcgiwrap_main();
+	return 0;
+}
