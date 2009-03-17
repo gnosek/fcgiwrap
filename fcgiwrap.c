@@ -488,6 +488,10 @@ static void handle_fcgi_request()
 			dup2(pipe_out[1], 1);
 			dup2(pipe_err[1], 2);
 
+			close(pipe_in[0]);
+			close(pipe_out[1]);
+			close(pipe_err[1]);
+
 			signal(SIGCHLD, SIG_DFL);
 			signal(SIGPIPE, SIG_DFL);
 			execl(filename, filename, NULL);
