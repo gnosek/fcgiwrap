@@ -369,7 +369,8 @@ char *get_cgi_filename() /* and fixup environment */
 
 	if ((p = getenv("DOCUMENT_ROOT"))) {
 		docroot = p;
-		buflen += docrootlen = strlen(p);
+		docrootlen = strlen(p);
+		buflen += docrootlen;
 	} else {
 		goto err;
 	}
@@ -519,7 +520,7 @@ static void handle_fcgi_request()
 
 			signal(SIGCHLD, SIG_DFL);
 			signal(SIGPIPE, SIG_DFL);
-			execl(filename, filename, NULL);
+			execl(filename, filename, (void *)NULL);
 			puts("Status: 502 Bad Gateway\nContent-type: text/plain\n\n502");
 			exit(99);
 
