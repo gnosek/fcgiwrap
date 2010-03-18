@@ -39,4 +39,4 @@ usage
 -----
 Most probably you will want ``fcgiwrap`` be launched by `www-servers/spawn-fcgi <http://redmine.lighttpd.net/projects/spawn-fcgi>`_. Or you could use the author's Perl launcher - see the homepage for that.
 
-When running, ``fcgiwrap`` evaluates environment variables *DOCUMENT_ROOT* and *SCRIPT_NAME*, concatenes them and invokes the resulting executable (should it exist).
+When running, ``fcgiwrap`` evaluates environment variables *DOCUMENT_ROOT* and *SCRIPT_NAME*, concatenates them and invokes the resulting executable (should it exist).
