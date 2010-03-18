@@ -4,6 +4,7 @@ fcgiwrap
 :Info:		Simple FastCGI wrapper for CGI scripts
 :Homepage:	http://nginx.localdomain.pl/wiki/FcgiWrap
 :Author:	Grzegorz Nosek <root@localdomain.pl>
+:Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
 
 Features
 ========
