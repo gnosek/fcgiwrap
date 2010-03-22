@@ -1,10 +1,11 @@
+targetdir = $(DESTDIR)@prefix@@sbindir@
+
 .PHONY:	clean distclean
 
 all: fcgiwrap
 install: all
-	[ -f /usr/local/bin/fcgiwrap ] && mv /usr/local/bin/fcgiwrap /usr/local/bin/fcgiwrap~
-	cp fcgiwrap /usr/local/bin
-	rm /usr/local/bin/fcgiwrap~
+	install -d -m 755 $(targetdir)
+	install -m 755 fcgiwrap $(targetdir)
 
 fcgiwrap: fcgiwrap.c
 	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi
@@ -17,3 +18,7 @@ clean:
 distclean: clean
 	-rm -rf config.log config.status autom4te.cache
 	-rm -f configure Makefile
+
+#>+ 21
+uninstall:
+	rm -f $(targetdir)/fcgiwrap

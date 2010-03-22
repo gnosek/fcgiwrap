@@ -32,8 +32,8 @@ To install::
     make
     make install
 
-*fcgiwrap* will be copied to ``/usr/local/bin/fcgiwrap``.
-You can omit ``make install`` and install it e.g. to ``/usr/sbin`` by hand.
+*fcgiwrap* will be copied to ``/usr/local/sbin/fcgiwrap`` if you did not set
+``--prefix`` for configure or ``DESTDIR`` for the makefile.
 
 usage
 -----
