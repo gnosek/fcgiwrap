@@ -16,10 +16,11 @@ AC_SUBST([AM_CFLAGS])
 AC_PROG_CC
 
 # Checks for libraries.
-AC_CHECK_LIB([fcgi], [FCGX_Init])
+AC_CHECK_LIB([fcgi], [FCGX_Init],, [AC_MSG_ERROR([FastCGI library is missing])])
 
 # Checks for header files.
-AC_CHECK_HEADERS([fcntl.h limits.h stdlib.h string.h unistd.h])
+AC_CHECK_HEADERS([fcntl.h],, [AC_MSG_ERROR([fcntl.h header missing])])
+AC_CHECK_HEADERS([limits.h stdlib.h string.h unistd.h],, [AC_MSG_ERROR([at least one important system header file is missing])])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
@@ -31,7 +32,7 @@ AC_TYPE_SSIZE_T
 AC_FUNC_FORK
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([dup2 putenv select setenv strchr strdup strerror strrchr])
+AC_CHECK_FUNCS([dup2 putenv select setenv strchr strdup strerror strrchr],, [AC_MSG_ERROR([seems as if your libraries doesn't provide an expected function])])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
