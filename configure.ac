@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.63)
+AC_PREREQ(2.61)
 AC_INIT(fcgiwrap, 1.0, root@localdomain.pl)
 AM_CFLAGS="-std=gnu99 -Wall -Wextra -Werror -pedantic"
 if test x"$CFLAGS" = x""; then
@@ -32,7 +32,8 @@ AC_TYPE_SSIZE_T
 AC_FUNC_FORK
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([dup2 putenv select setenv strchr strdup strerror strrchr],, [AC_MSG_ERROR([seems as if your libraries doesn't provide an expected function])])
+AC_CHECK_FUNCS([strchr strdup strrchr])
+AC_CHECK_FUNCS([dup2 putenv select setenv strerror],, [AC_MSG_ERROR([seems as if your libraries doesn't provide an expected function])])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
