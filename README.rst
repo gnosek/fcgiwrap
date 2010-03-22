@@ -33,7 +33,7 @@ To install::
     make install
 
 *fcgiwrap* will be copied to ``/usr/local/bin/fcgiwrap``.
-You can omit ``make install`` and install it e.g., in ``/usr/sbin`` by hand.
+You can omit ``make install`` and install it e.g. to ``/usr/sbin`` by hand.
 
 usage
 -----
