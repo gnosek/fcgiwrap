@@ -1,3 +1,5 @@
+.PHONY:	clean distclean
+
 all: fcgiwrap
 install: all
 	[ -f /usr/local/bin/fcgiwrap ] && mv /usr/local/bin/fcgiwrap /usr/local/bin/fcgiwrap~
@@ -7,6 +9,11 @@ install: all
 fcgiwrap: fcgiwrap.c
 	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi
 
+#>+ 21
 clean:
-	-rm fcgiwrap
+	-rm -f fcgiwrap
 
+#>+ 21
+distclean: clean
+	-rm -rf config.log config.status autom4te.cache
+	-rm -f configure Makefile
