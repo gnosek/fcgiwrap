@@ -1,5 +1,5 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.TH FCGIWRAP 8 "April 1, 2009"
+.TH FCGIWRAP 8 "May 25, 2010"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -31,8 +31,52 @@ Number of fcgiwrap processes to prefork.
 .B \-h
 Show a help message and exit.
 
+.SH ENVIRONMENT
+When running, \fBfcgiwrap\fP evaluates these environment variables set by
+the web server calling a fcgi-scipt. These variables will be concatenated 
+and the resulting executable run as CGI script wrapped as FastCGI.
+
+DOCUMENT_ROOT
+.RS
+directory which the script resides in
+.RE
+SCRIPT_NAME
+.RS
+actual executable
+
+.SH EXAMPLE
+Most probably you will want to launch \fBfcgiwrap\fP by 
+.I spawn-fcgi
+using a configuration like this:
+
+FCGI_SOCKET=/var/run/fcgiwrap.sock
+.br
+FCGI_PROGRAM=/usr/sbin/fcgiwrap
+.br
+FCGI_USER=nginx
+.br
+FCGI_GROUP=www
+.br
+FCGI_EXTRA_OPTIONS="-M 0700"
+.br
+ALLOWED_ENV="PATH"
+
+.I Nginx
+can be configured to have the arbitrary CGI
+.I cgit
+run as FastCGI as follows:
+
+location / {
+.br
+	fastcgi_param DOCUMENT_ROOT /var/www/localhost/htdocs/cgit/;
+.br
+	fastcgi_param SCRIPT_NAME   cgit;
+.br
+}
+
 .SH AUTHOR
 fcgiwrap was written by Grzegorz Nosek <root@localdomain.pl>
+with contributions by W-Mark Kubacki <wmark@hurrikane.de>.
 .PP
 This manual page was written by Jordi Mallach <jordi@iti.upv.es>,
 for the Debian project (and may be used by others).
