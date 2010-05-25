@@ -27,7 +27,7 @@ procedure
 ---------
 To install::
 
-    autoconf
+    autoreconf -i
     ./configure
     make
     make install

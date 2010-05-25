@@ -24,8 +24,8 @@
  */
 
 #define NO_FCGI_DEFINES
-#define FCGIWRAP_VERSION "1.0"
 
+#include "config.h"
 #include <stdarg.h>
 #include <fcgi_stdio.h>
 #include <stdio.h>
@@ -628,12 +628,12 @@ int main(int argc, char **argv)
 		switch (c) {
 			case 'h':
 				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
-					"fcgiwrap version "FCGIWRAP_VERSION"\n\n"
+					PACKAGE_NAME" version "PACKAGE_VERSION"\n\n"
 					"Options are:\n"
 					"  -c 1..x\t\tNumber of processes to prefork\n"
 					"  -h\t\t\tShow this help message and exit\n"
-					"\nReport bugs to Grzegorz Nosek <root@localdomain.pl>.\n"
-					"fcgiwrap home page: <http://nginx.localdomain.pl/wiki/FcgiWrap>\n",
+					"\nReport bugs to Grzegorz Nosek <"PACKAGE_BUGREPORT">.\n"
+					PACKAGE_NAME" home page: <http://nginx.localdomain.pl/wiki/FcgiWrap>\n",
 					argv[0]
 				);
 				return 0;
