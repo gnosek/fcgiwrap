@@ -6,6 +6,7 @@ all: fcgiwrap
 install: all
 	install -d -m 755 $(targetdir)
 	install -m 755 fcgiwrap $(targetdir)
+	install -m 644 fcgiwrap.8 $(man8dir)
 
 fcgiwrap: fcgiwrap.c
 	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi
@@ -21,4 +22,4 @@ distclean: clean
 
 #>+ 21
 uninstall:
-	rm -f $(targetdir)/fcgiwrap
+	rm -f $(targetdir)/fcgiwrap $(man8dir)/fcgiwrap.8
