@@ -495,7 +495,7 @@ static void handle_fcgi_request()
 			filename = get_cgi_filename();
 			inherit_environment();
 			if (!filename)
-				error_403("Cannot get script name, is DOCUMENT_ROOT and SCRIPT_NAME set and is the script executable?", NULL);
+				error_403("Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME set and is the script executable?", NULL);
 
 			last_slash = strrchr(filename, '/');
 			if (!last_slash)
@@ -629,9 +629,9 @@ int main(int argc, char **argv)
 			case 'h':
 				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
 					"fcgiwrap version "FCGIWRAP_VERSION"\n\n"
-					"options are:\n"
-					"  -c 1..x\t\tnumber of processes to prefork\n"
-					"  -h\t\t\tgive this help\n"
+					"Options are:\n"
+					"  -c 1..x\t\tNumber of processes to prefork\n"
+					"  -h\t\t\tShow this help message and exit\n"
 					"\nReport bugs to Grzegorz Nosek <root@localdomain.pl>.\n"
 					"fcgiwrap home page: <http://nginx.localdomain.pl/wiki/FcgiWrap>\n",
 					argv[0]
