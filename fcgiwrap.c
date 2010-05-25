@@ -630,7 +630,7 @@ int main(int argc, char **argv)
 				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
 					PACKAGE_NAME" version "PACKAGE_VERSION"\n\n"
 					"Options are:\n"
-					"  -c 1..x\t\tNumber of processes to prefork\n"
+					"  -c <number>\t\tNumber of processes to prefork\n"
 					"  -h\t\t\tShow this help message and exit\n"
 					"\nReport bugs to Grzegorz Nosek <"PACKAGE_BUGREPORT">.\n"
 					PACKAGE_NAME" home page: <http://nginx.localdomain.pl/wiki/FcgiWrap>\n",
