@@ -5,6 +5,7 @@ fcgiwrap
 :Homepage:	http://nginx.localdomain.pl/wiki/FcgiWrap
 :Author:	Grzegorz Nosek <root@localdomain.pl>
 :Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
+                Jordi Mallach <jordi@debian.org>
 
 Features
 ========
