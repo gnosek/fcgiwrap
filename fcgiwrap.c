@@ -42,6 +42,15 @@
 #include <sys/wait.h>
 #include <ctype.h>
 
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
+/* glibc doesn't seem to export it */
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX 108
+#endif
+
 extern char **environ;
 static char * const * inherited_environ;
 
@@ -623,18 +632,120 @@ static void prefork(int nchildren)
 	}
 }
 
+int setup_socket(char *url) {
+	char *p = url;
+	char *q;
+	int fd;
+	int port;
+	size_t sockaddr_size;
+	int one = 1;
+
+	union {
+		struct sockaddr sa;
+		struct sockaddr_un sa_un;
+		struct sockaddr_in sa_in;
+		struct sockaddr_in6 sa_in6;
+	} sa;
+
+	if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+		p += sizeof("unix:") - 1;
+
+		if (strlen(p) >= UNIX_PATH_MAX) {
+			fprintf(stderr, "Socket path too long, exceeds %d characters\n",
+			        UNIX_PATH_MAX);
+			return -1;
+		}
+
+		sockaddr_size = sizeof sa.sa_un;
+		sa.sa_un.sun_family = AF_UNIX;
+		strcpy(sa.sa_un.sun_path, p);
+	} else if (!strncmp(p, "tcp:", sizeof("tcp:") - 1)) {
+		p += sizeof("tcp:") - 1;
+
+		q = strchr(p, ':');
+		if (!q) {
+			goto invalid_url;
+		}
+		port = atoi(q+1);
+		if (port <= 0 || port > 65535) {
+			goto invalid_url;
+		}
+		sockaddr_size = sizeof sa.sa_in;
+		sa.sa_in.sin_family = AF_INET;
+		sa.sa_in.sin_port = htons(port);
+		*q = 0;
+		if (inet_pton(AF_INET, p, &sa.sa_in.sin_addr) < 1) {
+			goto invalid_url;
+		}
+	} else if (!strncmp(p, "tcp6:[", sizeof("tcp6:[") - 1)) {
+		p += sizeof("tcp6:[") - 1;
+		q = strchr(p, ']');
+		if (!q || !q[0] || q[1] != ':') {
+			goto invalid_url;
+		}
+		port = atoi(q+2);
+		if (port <= 0 || port > 65535) {
+			goto invalid_url;
+		}
+		sockaddr_size = sizeof sa.sa_in6;
+		sa.sa_in6.sin6_family = AF_INET6;
+		sa.sa_in6.sin6_port = htons(port);
+		*q = 0;
+		if (inet_pton(AF_INET6, p, &sa.sa_in6.sin6_addr) < 1) {
+			goto invalid_url;
+		}
+	} else {
+invalid_url:
+		fprintf(stderr, "Valid socket URLs are:\n"
+		                "unix:/path/to/socket for Unix sockets\n"
+		                "tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
+		                "tcp6:[ipv6_addr]:port for IPv6 sockets\n");
+		return -1;
+	}
+
+	fd = socket(sa.sa.sa_family, SOCK_STREAM, 0);
+	if (fd < 0) {
+		perror("Failed to create socket");
+		return -1;
+	}
+	if (bind(fd, &sa.sa, sockaddr_size) < 0) {
+		perror("Failed to bind");
+		return -1;
+	}
+	if (listen(fd, 511) < 0) {
+		perror("Failed to listen");
+		return -1;
+	}
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
+		perror("Failed to enable SO_REUSEADDR");
+		return -1;
+	}
+	if (dup2(fd, 0) < 0) {
+		perror("Failed to move socket to fd 0");
+		return -1;
+	}
+	if (close(fd) < 0) {
+		perror("Failed to close original socket");
+		return -1;
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	int nchildren = 1;
+	char *socket_url = NULL;
 	int c;
 
-	while ((c = getopt(argc, argv, "c:h")) != -1) {
+	while ((c = getopt(argc, argv, "c:hs:")) != -1) {
 		switch (c) {
 			case 'h':
 				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
 					PACKAGE_NAME" version "PACKAGE_VERSION"\n\n"
 					"Options are:\n"
 					"  -c <number>\t\tNumber of processes to prefork\n"
+					"  -s <socket_url>\tSocket to bind to (say -s help for help)\n"
 					"  -h\t\t\tShow this help message and exit\n"
 					"\nReport bugs to Grzegorz Nosek <"PACKAGE_BUGREPORT">.\n"
 					PACKAGE_NAME" home page: <http://nginx.localdomain.pl/wiki/FcgiWrap>\n",
@@ -644,8 +755,11 @@ int main(int argc, char **argv)
 			case 'c':
 				nchildren = atoi(optarg);
 				break;
+			case 's':
+				socket_url = strdup(optarg);
+				break;
 			case '?':
-				if (optopt == 'c')
+				if (optopt == 'c' || optopt == 's')
 					fprintf(stderr, "Option -%c requires an argument.\n", optopt);
 				else if (isprint(optopt))
 					fprintf(stderr, "Unknown option `-%c'.\n", optopt);
@@ -657,6 +771,13 @@ int main(int argc, char **argv)
 			default:
 				abort();
 		}
+	}
+
+	if (socket_url) {
+		if (setup_socket(socket_url) < 0) {
+			return 1;
+		}
+		free(socket_url);
 	}
 
 	prefork(nchildren);

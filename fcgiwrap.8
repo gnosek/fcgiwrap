@@ -1,5 +1,5 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.TH FCGIWRAP 8 "Jun 2, 2010"
+.TH FCGIWRAP 8 "Jun 3, 2010"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -28,6 +28,14 @@ that may need it).
 .B \-c \fInumber\fP
 Number of fcgiwrap processes to prefork.
 .TP
+.B \-s \fIsocket_url\fP
+A URL for the listen socket to bind to. By default \fBfcgiwrap\fP expects
+a listen socket to be passed on file descriptor 0, matching the FastCGI convention.
+The recommended way to deploy \fBfcgiwrap\fP is to run it under a process manager that
+takes care of opening the socket. However, for simple configurations and one-off
+tests this option may be used. Valid socket_urls include \fIunix:/path/to/unix/socket\fP,
+\fItcp:dot.ted.qu.ad:port\fP and \fItcp6:[ipv6_addr]:port\fP.
+.TP
 .B \-h
 Show a help message and exit.
 
@@ -53,6 +61,14 @@ SCRIPT_FILENAME
 complete path to CGI script. When set, overrides DOCUMENT_ROOT and SCRIPT_NAME
 
 .SH EXAMPLE
+The fastest way to see \fBfcgiwrap\fP do something is to launch it at the command line
+like this:
+.br
+fcgiwrap -s unix:/var/run/fcgiwrap.sock
+.br
+Apart from potential permission problems etc., it should be ready to accept FastCGI
+requests and run CGI scripts.
+
 Most probably you will want to launch \fBfcgiwrap\fP by 
 .I spawn-fcgi
 using a configuration like this:
@@ -80,11 +96,14 @@ location / {
 .br
 	fastcgi_param SCRIPT_NAME   cgit;
 .br
+	fastcgi_pass unix:/var/run/fastcgi.sock;
+.br
 }
 
 .SH AUTHOR
 fcgiwrap was written by Grzegorz Nosek <root@localdomain.pl>
 with contributions by W-Mark Kubacki <wmark@hurrikane.de>.
 .PP
-This manual page was written by Jordi Mallach <jordi@debian.org>,
+This manual page was written by Jordi Mallach <jordi@debian.org>
+(with contributions by Grzegorz Nosek)
 for the Debian project (and may be used by others).
