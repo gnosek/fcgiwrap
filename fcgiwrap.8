@@ -1,5 +1,5 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.TH FCGIWRAP 8 "May 25, 2010"
+.TH FCGIWRAP 8 "Jun 2, 2010"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -33,8 +33,12 @@ Show a help message and exit.
 
 .SH ENVIRONMENT
 When running, \fBfcgiwrap\fP evaluates these environment variables set by
-the web server calling a fcgi-scipt. These variables will be concatenated 
-and the resulting executable run as CGI script wrapped as FastCGI.
+the web server calling an fcgi-script. The variables DOCUMENT_ROOT and
+SCRIPT_NAME will be concatenated and the resulting executable run as CGI
+script wrapped as FastCGI, with the remainder after the script name
+available as PATH_INFO. To disable PATH_INFO mangling, set up your web
+server to pass SCRIPT_FILENAME, which should contain the complete path to
+the script. Then PATH_INFO will not be modified.
 
 DOCUMENT_ROOT
 .RS
@@ -43,6 +47,10 @@ directory which the script resides in
 SCRIPT_NAME
 .RS
 actual executable
+.RE
+SCRIPT_FILENAME
+.RS
+complete path to CGI script. When set, overrides DOCUMENT_ROOT and SCRIPT_NAME
 
 .SH EXAMPLE
 Most probably you will want to launch \fBfcgiwrap\fP by 

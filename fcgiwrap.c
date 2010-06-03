@@ -368,6 +368,10 @@ char *get_cgi_filename() /* and fixup environment */
 	int rf_len;
 	char *pathinfo = NULL;
 
+	if ((p = getenv("SCRIPT_FILENAME"))) {
+		return strdup(p);
+	}
+
 	if ((p = getenv("DOCUMENT_ROOT"))) {
 		docroot = p;
 		docrootlen = strlen(p);
@@ -495,7 +499,7 @@ static void handle_fcgi_request()
 			filename = get_cgi_filename();
 			inherit_environment();
 			if (!filename)
-				error_403("Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME set and is the script executable?", NULL);
+				error_403("Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
 
 			last_slash = strrchr(filename, '/');
 			if (!last_slash)
