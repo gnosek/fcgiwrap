@@ -1,4 +1,5 @@
 targetdir = $(DESTDIR)@prefix@@sbindir@
+man8dir = $(DESTDIR)@prefix@@mandir@/man8
 
 .PHONY:	clean distclean
 
@@ -6,6 +7,7 @@ all: fcgiwrap
 install: all
 	install -d -m 755 $(targetdir)
 	install -m 755 fcgiwrap $(targetdir)
+	install -d -m 755 $(man8dir)
 	install -m 644 fcgiwrap.8 $(man8dir)
 
 fcgiwrap: fcgiwrap.c
