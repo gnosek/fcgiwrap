@@ -64,7 +64,7 @@ complete path to CGI script. When set, overrides DOCUMENT_ROOT and SCRIPT_NAME
 The fastest way to see \fBfcgiwrap\fP do something is to launch it at the command line
 like this:
 .br
-fcgiwrap -s unix:/var/run/fcgiwrap.sock
+fcgiwrap \-s unix:/var/run/fcgiwrap.sock
 .br
 Apart from potential permission problems etc., it should be ready to accept FastCGI
 requests and run CGI scripts.
@@ -81,7 +81,7 @@ FCGI_USER=nginx
 .br
 FCGI_GROUP=www
 .br
-FCGI_EXTRA_OPTIONS="-M 0700"
+FCGI_EXTRA_OPTIONS="\-M 0700"
 .br
 ALLOWED_ENV="PATH"
 
