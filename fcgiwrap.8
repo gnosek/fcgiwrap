@@ -28,6 +28,12 @@ that may need it).
 .B \-c \fInumber\fP
 Number of fcgiwrap processes to prefork.
 .TP
+.B \-f
+Redirect STDERR output from executed CGI through FastCGI so it shows in the web server
+error log.  Otherwise it would be returned on \fBfcgiwrap\fP's STDERR, which could be redirected.
+If running through \fBspawn-fcgi\fP, \fBfcgiwrap\fP's STDERR is sent to /dev/null, so this option
+provides a way to get that output back.
+.TP
 .B \-s \fIsocket_url\fP
 A URL for the listen socket to bind to. By default \fBfcgiwrap\fP expects
 a listen socket to be passed on file descriptor 0, matching the FastCGI convention.

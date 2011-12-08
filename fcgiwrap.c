@@ -76,6 +76,8 @@ static const char * blacklisted_env_vars[] = {
 	NULL,
 };
 
+static int stderr_to_fastcgi = 0;
+
 
 #define FCGI_BUF_SIZE 4096
 
@@ -326,7 +328,10 @@ static void fcgi_pass(struct fcgi_context *fc)
 			}
 		}
 		if (fc->fd_stderr >= 0 && FD_ISSET(fc->fd_stderr, &rset)) {
-			err = fcgi_pass_raw_fd(&fc->fd_stderr, 2, buf, sizeof(buf));
+			if (stderr_to_fastcgi)
+				err = fcgi_pass_fd(fc, &fc->fd_stderr, FCGI_stderr, buf, sizeof(buf));
+			else
+				err = fcgi_pass_raw_fd(&fc->fd_stderr, 2, buf, sizeof(buf));
 			if (err) {
 				fcgi_finish(fc, err);
 				return;
@@ -739,8 +744,11 @@ int main(int argc, char **argv)
 	char *socket_url = NULL;
 	int c;
 
-	while ((c = getopt(argc, argv, "c:hs:")) != -1) {
+	while ((c = getopt(argc, argv, "c:hfs:")) != -1) {
 		switch (c) {
+			case 'f':
+				stderr_to_fastcgi++;
+				break;
 			case 'h':
 				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
 					PACKAGE_NAME" version "PACKAGE_VERSION"\n\n"
