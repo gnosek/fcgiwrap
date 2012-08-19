@@ -47,6 +47,10 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 
+#ifdef HAVE_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
+
 /* glibc doesn't seem to export it */
 #ifndef UNIX_PATH_MAX
 #define UNIX_PATH_MAX 108
@@ -788,6 +792,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+#ifdef HAVE_SYSTEMD
+	if (sd_listen_fds(true) > 0) {
+		/* systemd woke us up. we should never see more than one FD passed to us. */
+		if (listen_on_fd(SD_LISTEN_FDS_START) < 0) {
+			return 1;
+		}
+	} else
+#endif
 	if (socket_url) {
 		if (setup_socket(socket_url) < 0) {
 			return 1;
