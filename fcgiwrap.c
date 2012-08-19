@@ -638,13 +638,35 @@ static void prefork(int nchildren)
 	}
 }
 
+static int listen_on_fd(int fd) {
+	int one = 1;
+
+	if (listen(fd, 511) < 0) {
+		perror("Failed to listen");
+		return -1;
+	}
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
+		perror("Failed to enable SO_REUSEADDR");
+		return -1;
+	}
+	if (dup2(fd, 0) < 0) {
+		perror("Failed to move socket to fd 0");
+		return -1;
+	}
+	if (close(fd) < 0) {
+		perror("Failed to close original socket");
+		return -1;
+	}
+
+	return 0;
+}
+
 int setup_socket(char *url) {
 	char *p = url;
 	char *q;
 	int fd;
 	int port;
 	size_t sockaddr_size;
-	int one = 1;
 
 	union {
 		struct sockaddr sa;
@@ -718,24 +740,8 @@ invalid_url:
 		perror("Failed to bind");
 		return -1;
 	}
-	if (listen(fd, 511) < 0) {
-		perror("Failed to listen");
-		return -1;
-	}
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
-		perror("Failed to enable SO_REUSEADDR");
-		return -1;
-	}
-	if (dup2(fd, 0) < 0) {
-		perror("Failed to move socket to fd 0");
-		return -1;
-	}
-	if (close(fd) < 0) {
-		perror("Failed to close original socket");
-		return -1;
-	}
 
-	return 0;
+	return listen_on_fd(fd);
 }
 
 int main(int argc, char **argv)
