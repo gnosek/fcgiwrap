@@ -47,6 +47,10 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 
+#ifdef HAVE_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
+
 /* glibc doesn't seem to export it */
 #ifndef UNIX_PATH_MAX
 #define UNIX_PATH_MAX 108
@@ -344,7 +348,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 	fcgi_finish(fc, "reading CGI reply (no response received)");
 }
 
-int check_file_perms(const char *path)
+static int check_file_perms(const char *path)
 {
 	struct stat ls;
 	struct stat fs;
@@ -374,7 +378,7 @@ int check_file_perms(const char *path)
 	}
 }
 
-char *get_cgi_filename() /* and fixup environment */
+static char *get_cgi_filename(void) /* and fixup environment */
 {
 	int buflen = 1, docrootlen;
 	char *buf = NULL;
@@ -457,7 +461,7 @@ static int blacklisted_env(const char *var_name, const char *var_name_end)
 	return 0;
 }
 
-static void inherit_environment()
+static void inherit_environment(void)
 {
 	char * const * p;
 	char *q;
@@ -491,7 +495,7 @@ static void error_403(const char *reason, const char *filename)
 	exit(99);
 }
 
-static void handle_fcgi_request()
+static void handle_fcgi_request(void)
 {
 	int pipe_in[2];
 	int pipe_out[2];
@@ -638,13 +642,35 @@ static void prefork(int nchildren)
 	}
 }
 
-int setup_socket(char *url) {
+static int listen_on_fd(int fd) {
+	int one = 1;
+
+	if (listen(fd, 511) < 0) {
+		perror("Failed to listen");
+		return -1;
+	}
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
+		perror("Failed to enable SO_REUSEADDR");
+		return -1;
+	}
+	if (dup2(fd, 0) < 0) {
+		perror("Failed to move socket to fd 0");
+		return -1;
+	}
+	if (close(fd) < 0) {
+		perror("Failed to close original socket");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int setup_socket(char *url) {
 	char *p = url;
 	char *q;
 	int fd;
 	int port;
 	size_t sockaddr_size;
-	int one = 1;
 
 	union {
 		struct sockaddr sa;
@@ -718,24 +744,8 @@ invalid_url:
 		perror("Failed to bind");
 		return -1;
 	}
-	if (listen(fd, 511) < 0) {
-		perror("Failed to listen");
-		return -1;
-	}
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
-		perror("Failed to enable SO_REUSEADDR");
-		return -1;
-	}
-	if (dup2(fd, 0) < 0) {
-		perror("Failed to move socket to fd 0");
-		return -1;
-	}
-	if (close(fd) < 0) {
-		perror("Failed to close original socket");
-		return -1;
-	}
 
-	return 0;
+	return listen_on_fd(fd);
 }
 
 int main(int argc, char **argv)
@@ -782,6 +792,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+#ifdef HAVE_SYSTEMD
+	if (sd_listen_fds(true) > 0) {
+		/* systemd woke us up. we should never see more than one FD passed to us. */
+		if (listen_on_fd(SD_LISTEN_FDS_START) < 0) {
+			return 1;
+		}
+	} else
+#endif
 	if (socket_url) {
 		if (setup_socket(socket_url) < 0) {
 			return 1;

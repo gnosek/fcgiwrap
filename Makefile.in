@@ -11,7 +11,7 @@ install: all
 	install -m 644 fcgiwrap.8 $(man8dir)
 
 fcgiwrap: fcgiwrap.c
-	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi @LDFLAGS@
+	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi @systemd_LIBS@ @LDFLAGS@
 
 #>+ 21
 clean:
