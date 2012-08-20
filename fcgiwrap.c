@@ -348,7 +348,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 	fcgi_finish(fc, "reading CGI reply (no response received)");
 }
 
-int check_file_perms(const char *path)
+static int check_file_perms(const char *path)
 {
 	struct stat ls;
 	struct stat fs;
@@ -378,7 +378,7 @@ int check_file_perms(const char *path)
 	}
 }
 
-char *get_cgi_filename() /* and fixup environment */
+static char *get_cgi_filename(void) /* and fixup environment */
 {
 	int buflen = 1, docrootlen;
 	char *buf = NULL;
@@ -461,7 +461,7 @@ static int blacklisted_env(const char *var_name, const char *var_name_end)
 	return 0;
 }
 
-static void inherit_environment()
+static void inherit_environment(void)
 {
 	char * const * p;
 	char *q;
@@ -495,7 +495,7 @@ static void error_403(const char *reason, const char *filename)
 	exit(99);
 }
 
-static void handle_fcgi_request()
+static void handle_fcgi_request(void)
 {
 	int pipe_in[2];
 	int pipe_out[2];
@@ -665,7 +665,7 @@ static int listen_on_fd(int fd) {
 	return 0;
 }
 
-int setup_socket(char *url) {
+static int setup_socket(char *url) {
 	char *p = url;
 	char *q;
 	int fd;
