@@ -38,6 +38,14 @@ if test "x$with_systemd" != "xno"; then
 fi
 AM_CONDITIONAL(HAVE_LIBSSL, [test "x$have_systemd" = "xyes"])
 
+AC_ARG_WITH([systemdsystemunitdir],
+        AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
+        [], [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
+if test "x$with_systemdsystemunitdir" != xno -a "x$have_systemd" != xno; then
+        AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
+fi
+AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" -a "x$with_systemdsystemunitdir" != xno ])
+
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h],, [AC_MSG_ERROR([fcntl.h header missing])])
 AC_CHECK_HEADERS([limits.h stdlib.h string.h unistd.h],, [AC_MSG_ERROR([at least one important system header file is missing])])

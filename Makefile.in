@@ -9,6 +9,11 @@ install: all
 	install -m 755 fcgiwrap $(targetdir)
 	install -d -m 755 $(man8dir)
 	install -m 644 fcgiwrap.8 $(man8dir)
+ifneq ("@systemdsystemunitdir@", "")
+	install -d -m 755 $(DESTDIR)@systemdsystemunitdir@
+	install -m 644 systemd/fcgiwrap.socket $(DESTDIR)@systemdsystemunitdir@
+	install -m 644 systemd/fcgiwrap.service $(DESTDIR)@systemdsystemunitdir@
+endif
 
 fcgiwrap: fcgiwrap.c
 	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi @systemd_LIBS@ @LDFLAGS@
