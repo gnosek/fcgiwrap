@@ -36,7 +36,7 @@ if test "x$with_systemd" != "xno"; then
     AC_MSG_ERROR([systemd support requested but libraries not found])
   fi
 fi
-AM_CONDITIONAL(HAVE_LIBSSL, [test "x$have_systemd" = "xyes"])
+AM_CONDITIONAL(HAVE_SYSTEMD, [test "x$have_systemd" = "xyes"])
 
 AC_ARG_WITH([systemdsystemunitdir],
         AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
@@ -44,7 +44,6 @@ AC_ARG_WITH([systemdsystemunitdir],
 if test "x$with_systemdsystemunitdir" != xno -a "x$have_systemd" != xno; then
         AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
 fi
-AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir" -a "x$with_systemdsystemunitdir" != xno ])
 
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h],, [AC_MSG_ERROR([fcntl.h header missing])])
