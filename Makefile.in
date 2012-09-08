@@ -1,5 +1,6 @@
 targetdir = $(DESTDIR)@prefix@@sbindir@
 man8dir = $(DESTDIR)@prefix@@mandir@/man8
+datarootdir =
 
 .PHONY:	clean distclean
 
