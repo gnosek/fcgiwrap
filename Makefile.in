@@ -1,5 +1,6 @@
 targetdir = $(DESTDIR)@prefix@@sbindir@
 man8dir = $(DESTDIR)@prefix@@mandir@/man8
+datarootdir =
 
 .PHONY:	clean distclean
 
@@ -15,8 +16,10 @@ ifneq ("@systemdsystemunitdir@", "")
 	install -m 644 systemd/fcgiwrap.service $(DESTDIR)@systemdsystemunitdir@
 endif
 
+LDLIBS = -lfcgi @systemd_LIBS@
+CFLAGS = @AM_CFLAGS@
+
 fcgiwrap: fcgiwrap.c
-	@CC@ @AM_CFLAGS@ fcgiwrap.c -o fcgiwrap -lfcgi @systemd_LIBS@ @LDFLAGS@
 
 #>+ 21
 clean:
