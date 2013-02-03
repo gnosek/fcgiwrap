@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2009 Grzegorz Nosek
+ * Copyright (c) 2007-2013 Grzegorz Nosek
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
