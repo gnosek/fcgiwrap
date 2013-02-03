@@ -487,14 +487,15 @@ static void inherit_environment(void)
 
 static void error_403(const char *reason, const char *filename)
 {
-	FCGI_fputs("Status: 403 Forbidden\nContent-type: text/plain\n\n403", FCGI_stdout);
+	puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
+	fflush(stdout);
 	if (filename) {
-		FCGI_fprintf(FCGI_stderr, "%s (%s)\n", reason, filename);
+		fprintf(stderr, "%s (%s)\n", reason, filename);
 	} else {
-		FCGI_fputs(reason, FCGI_stderr);
-		FCGI_fputc('\n', FCGI_stderr);
+		fputs(reason, stderr);
+		fputc('\n', stderr);
 	}
-	exit(99);
+	_exit(99);
 }
 
 static void handle_fcgi_request(void)
@@ -517,6 +518,21 @@ static void handle_fcgi_request(void)
 			goto err_fork;
 
 		case 0: /* child */
+			close(pipe_in[1]);
+			close(pipe_out[0]);
+			close(pipe_err[0]);
+
+			dup2(pipe_in[0], 0);
+			dup2(pipe_out[1], 1);
+			dup2(pipe_err[1], 2);
+
+			close(pipe_in[0]);
+			close(pipe_out[1]);
+			close(pipe_err[1]);
+
+			signal(SIGCHLD, SIG_DFL);
+			signal(SIGPIPE, SIG_DFL);
+
 			filename = get_cgi_filename();
 			inherit_environment();
 			if (!filename)
@@ -532,20 +548,6 @@ static void handle_fcgi_request(void)
 
 			*last_slash = '/';
 
-			close(pipe_in[1]);
-			close(pipe_out[0]);
-			close(pipe_err[0]);
-
-			dup2(pipe_in[0], 0);
-			dup2(pipe_out[1], 1);
-			dup2(pipe_err[1], 2);
-
-			close(pipe_in[0]);
-			close(pipe_out[1]);
-			close(pipe_err[1]);
-
-			signal(SIGCHLD, SIG_DFL);
-			signal(SIGPIPE, SIG_DFL);
 			execl(filename, filename, (void *)NULL);
 			puts("Status: 502 Bad Gateway\nContent-type: text/plain\n\n502");
 			exit(99);
