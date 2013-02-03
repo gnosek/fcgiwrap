@@ -485,9 +485,10 @@ static void inherit_environment(void)
 	}
 }
 
-static void error_403(const char *reason, const char *filename)
+static void cgi_error(const char *message, const char *reason, const char *filename)
 {
-	puts("Status: 403 Forbidden\nContent-type: text/plain\n\n403");
+	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
+		message, message);
 	fflush(stdout);
 	if (filename) {
 		fprintf(stderr, "%s (%s)\n", reason, filename);
@@ -536,21 +537,20 @@ static void handle_fcgi_request(void)
 			filename = get_cgi_filename();
 			inherit_environment();
 			if (!filename)
-				error_403("Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
+				cgi_error("403 Forbidden", "Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
 
 			last_slash = strrchr(filename, '/');
 			if (!last_slash)
-				error_403("Script name must be a fully qualified path", filename);
+				cgi_error("403 Forbidden", "Script name must be a fully qualified path", filename);
 
 			*last_slash = 0;
 			if (chdir(filename) < 0)
-				error_403("Cannot chdir to script directory", filename);
+				cgi_error("403 Forbidden", "Cannot chdir to script directory", filename);
 
 			*last_slash = '/';
 
 			execl(filename, filename, (void *)NULL);
-			puts("Status: 502 Bad Gateway\nContent-type: text/plain\n\n502");
-			exit(99);
+			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
 
 		default: /* parent */
 			close(pipe_in[0]);
