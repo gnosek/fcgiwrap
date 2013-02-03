@@ -531,6 +531,8 @@ static void handle_fcgi_request(void)
 			close(pipe_out[1]);
 			close(pipe_err[1]);
 
+			close(FCGI_fileno(FCGI_stdout));
+
 			signal(SIGCHLD, SIG_DFL);
 			signal(SIGPIPE, SIG_DFL);
 
