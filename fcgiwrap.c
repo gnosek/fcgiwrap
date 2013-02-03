@@ -388,6 +388,8 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	char *pathinfo = NULL;
 
 	if ((p = getenv("SCRIPT_FILENAME"))) {
+		if (check_file_perms(p) != 0)
+			goto err;
 		return strdup(p);
 	}
 
