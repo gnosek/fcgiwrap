@@ -58,6 +58,8 @@
 
 extern char **environ;
 static char * const * inherited_environ;
+static const char **allowed_programs;
+static size_t allowed_programs_count;
 
 static const char * blacklisted_env_vars[] = {
 	"AUTH_TYPE",
@@ -485,6 +487,19 @@ static void inherit_environment(void)
 	}
 }
 
+static bool is_allowed_program(const char *program) {
+	size_t i;
+	if (!allowed_programs_count)
+		return true;
+
+	for (i = 0; i < allowed_programs_count; i++) {
+		if (!strcmp(allowed_programs[i], program))
+			return true;
+	}
+
+	return false;
+}
+
 static void cgi_error(const char *message, const char *reason, const char *filename)
 {
 	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
@@ -540,6 +555,9 @@ static void handle_fcgi_request(void)
 			inherit_environment();
 			if (!filename)
 				cgi_error("403 Forbidden", "Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
+
+			if (!is_allowed_program(filename))
+				cgi_error("403 Forbidden", "The given script is not allowed to execute", filename);
 
 			last_slash = strrchr(filename, '/');
 			if (!last_slash)
@@ -760,7 +778,7 @@ int main(int argc, char **argv)
 	char *socket_url = NULL;
 	int c;
 
-	while ((c = getopt(argc, argv, "c:hfs:")) != -1) {
+	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
 		switch (c) {
 			case 'f':
 				stderr_to_fastcgi++;
@@ -773,6 +791,7 @@ int main(int argc, char **argv)
 					"  -c <number>\t\tNumber of processes to prefork\n"
 					"  -s <socket_url>\tSocket to bind to (say -s help for help)\n"
 					"  -h\t\t\tShow this help message and exit\n"
+					"  -p <path>\t\tRestrict execution to this script. (repeated options will be merged)\n"
 					"\nReport bugs to Grzegorz Nosek <"PACKAGE_BUGREPORT">.\n"
 					PACKAGE_NAME" home page: <http://nginx.localdomain.pl/wiki/FcgiWrap>\n",
 					argv[0]
@@ -784,8 +803,14 @@ int main(int argc, char **argv)
 			case 's':
 				socket_url = strdup(optarg);
 				break;
+			case 'p':
+				allowed_programs = realloc(allowed_programs, (allowed_programs_count + 1) * sizeof (char *));
+				if (!allowed_programs)
+					abort();
+				allowed_programs[allowed_programs_count++] = strdup(optarg);
+				break;
 			case '?':
-				if (optopt == 'c' || optopt == 's')
+				if (optopt == 'c' || optopt == 's' || optopt == 'p')
 					fprintf(stderr, "Option -%c requires an argument.\n", optopt);
 				else if (isprint(optopt))
 					fprintf(stderr, "Unknown option `-%c'.\n", optopt);
