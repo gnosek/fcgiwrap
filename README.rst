@@ -7,6 +7,9 @@ fcgiwrap
 :Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
                 Jordi Mallach <jordi@debian.org>
 
+
+This page has been translated into `Spanish <http://www.webhostinghub.com/support/es/misc/fcgiwrap>`_ language by Maria Ramos from `Webhostinghub.com/support/edu <http://www.webhostinghub.com/support/edu>`_.
+
 Features
 ========
  - very lightweight (84KB of private memory per instance)
