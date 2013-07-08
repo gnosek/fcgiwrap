@@ -350,37 +350,55 @@ static void fcgi_pass(struct fcgi_context *fc)
 	fcgi_finish(fc, "reading CGI reply (no response received)");
 }
 
-static int check_file_perms(const char *path)
+static char * make_error_msg (const char *error_msg, const char * file_name)
+{
+	int buffsize;
+	char *result_error_str;
+
+	buffsize = strlen (error_msg) + strlen (file_name) + 3;
+	result_error_str = malloc (buffsize);
+	if (result_error_str != NULL)
+		snprintf (result_error_str, buffsize, "%s: %s", error_msg, file_name);
+	return result_error_str;
+}
+
+static int check_file_perms(const char *path, char **errormsg)
 {
 	struct stat ls;
 	struct stat fs;
 
 	if (lstat(path, &ls) < 0) {
+		*errormsg = make_error_msg ("Couldn't get a stat info", path);
 		return -ENOENT;
 	} else if (S_ISREG(ls.st_mode)) {
 		if (ls.st_mode & S_IXUSR) {
 			return 0;
 		} else {
+			*errormsg = make_error_msg ("File is not executable", path);
 			return -EACCES;
 		}
 	} else if (!S_ISLNK(ls.st_mode)) {
+		*errormsg = make_error_msg ("File is not regular or symlink", path);
 		return -EACCES;
 	}
 
 	if (stat(path, &fs) < 0) {
+		*errormsg = make_error_msg ("Couldn't get a stat info", path);
 		return -ENOENT;
 	} else if (S_ISREG(fs.st_mode)) {
 		if (fs.st_mode & S_IXUSR) {
 			return 0;
 		} else {
+			*errormsg = make_error_msg ("File is not executable", path);
 			return -EACCES;
 		}
 	} else {
+		*errormsg = make_error_msg ("File is not regular", path);
 		return -EACCES;
 	}
 }
 
-static char *get_cgi_filename(void) /* and fixup environment */
+static char *get_cgi_filename(char **errormsg) /* and fixup environment */
 {
 	int buflen = 1, docrootlen;
 	char *buf = NULL;
@@ -390,7 +408,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	char *pathinfo = NULL;
 
 	if ((p = getenv("SCRIPT_FILENAME"))) {
-		if (check_file_perms(p) != 0)
+		if (check_file_perms(p, errormsg) != 0)
 			goto err;
 		return strdup(p);
 	}
@@ -411,17 +429,21 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	}
 
 	buf = malloc(buflen);
-	if (!buf) goto err;
+	if (!buf) {
+		*errormsg = "Unable to allocate memory!";
+		goto err;
+	}
 
 	strcpy(buf, docroot);
 	strcpy(buf + docrootlen, scriptname);
 	pathinfo = strdup(buf);
 	if (!pathinfo) {
+		*errormsg = "Unable to allocate memory!";
 		goto err;
 	}
 
 	while(1) {
-		switch(check_file_perms(buf)) {
+		switch(check_file_perms(buf, errormsg)) {
 			case -EACCES:
 				goto err;
 			case 0:
@@ -521,6 +543,7 @@ static void handle_fcgi_request(void)
 	int pipe_err[2];
 	char *filename;
 	char *last_slash;
+	char *errormsg = NULL;
 	pid_t pid;
 
 	struct fcgi_context fc;
@@ -551,10 +574,14 @@ static void handle_fcgi_request(void)
 			signal(SIGCHLD, SIG_DFL);
 			signal(SIGPIPE, SIG_DFL);
 
-			filename = get_cgi_filename();
+			filename = get_cgi_filename(&errormsg);
 			inherit_environment();
-			if (!filename)
-				cgi_error("403 Forbidden", "Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
+			if (!filename) {
+				if (errormsg != NULL)
+					cgi_error("403 Forbidden", errormsg, NULL);
+				else
+					cgi_error("403 Forbidden", "Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
+			}
 
 			if (!is_allowed_program(filename))
 				cgi_error("403 Forbidden", "The given script is not allowed to execute", filename);
