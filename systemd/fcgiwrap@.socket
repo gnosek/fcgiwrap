@@ -1,0 +1,8 @@
+[Unit]
+Description=fcgiwrap socket for user %I
+
+[Socket]
+ListenStream=/run/fcgiwrap-%I.sock
+
+[Install]
+WantedBy=sockets.target
