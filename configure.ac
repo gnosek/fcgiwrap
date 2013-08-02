@@ -15,6 +15,7 @@ AC_SUBST([AM_CFLAGS])
 # Checks for programs.
 AC_PROG_CC
 PKG_PROG_PKG_CONFIG
+AC_PROG_SED
 
 # Create the config.h.
 AC_CONFIG_HEADERS([config.h])

@@ -4,7 +4,7 @@ datarootdir =
 
 .PHONY:	clean distclean
 
-all: fcgiwrap
+all: fcgiwrap systemd/fcgiwrap@.socket systemd/fcgiwrap@.service
 install: all
 	install -d -m 755 $(targetdir)
 	install -m 755 fcgiwrap $(targetdir)
@@ -21,9 +21,16 @@ CFLAGS = @AM_CFLAGS@
 
 fcgiwrap: fcgiwrap.c
 
+systemd/fcgiwrap@.socket: systemd/fcgiwrap@.socket.in
+	$(SED) -e 's,[@]sbindir[@],@sbindir@,g' < $< > $@
+
+systemd/fcgiwrap@.service: systemd/fcgiwrap@.service.in
+	$(SED) -e 's,[@]sbindir[@],@sbindir@,g' < $< > $@
+
 #>+ 21
 clean:
 	-rm -f fcgiwrap
+	-rm -f systemd/fcgiwrap@.socket systemd/fcgiwrap@.service
 
 #>+ 21
 distclean: clean

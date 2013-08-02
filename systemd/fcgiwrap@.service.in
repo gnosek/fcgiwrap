@@ -3,5 +3,5 @@ Description=Simple CGI Server for user %I
 After=nss-user-lookup.target
 
 [Service]
-ExecStart=/usr/sbin/fcgiwrap -s /run/fcgiwrap-%I.sock
+ExecStart=@sbindir@/fcgiwrap -s /run/fcgiwrap-%I.sock
 User=%I
