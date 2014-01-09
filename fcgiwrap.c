@@ -623,7 +623,7 @@ static void sigchld_handler(int dummy)
 {
 	int status;
 
-	while ((dummy = waitpid(-1, &status, WNOHANG)) != -1) {
+	while ((dummy = waitpid(-1, &status, WNOHANG)) > 0) {
 		/* sanity check */
 		if (nrunning > 0)
 			nrunning--;
