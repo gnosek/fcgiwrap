@@ -52,9 +52,10 @@ requirements
 At the time of writing, the *fcgiwrap* RPM is not included in any public
 repository. As a result, You have to build the RPM from scratch by following
 the procedure below:
+
 build the RPM package
 ---------------------
-To install or upgrade RPM build tools::
+Install required dependencies RPM build tools::
 
     sudo yum install -y autoconf automake fcgi-devel pkgconfig rpm-build
 
@@ -83,8 +84,8 @@ package, run command like below::
 
     sudo rpm -Uhv fcgiwrap-1.1.0-1.fc18.armv6hl.rpm
 
-The exact name of the RPM package file name depends on the OS and
-hardware architecture where you build the RPM.
+The exact name of the RPM package file depends on the OS and hardware
+architecture where you build the RPM.
 
 Usage
 =====
