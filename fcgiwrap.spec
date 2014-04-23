@@ -21,6 +21,7 @@ BuildRequires:	autoconf automake fcgi-devel pkgconfig
 %{?with_systemd:BuildRequires:  systemd-devel systemd}
 Requires:	fcgi
 
+
 %description
 This package provides a simple FastCGI wrapper for CGI scripts with/
 following features:
@@ -32,15 +33,17 @@ following features:
  - no configuration, so you can run several sites off the same
    fcgiwrap pool
  - passes CGI stderr output to stderr stream of cgiwrap or FastCGI
+ - support systemd socket activation, launcher program like spawn-fcgi
+   is no longer required on systemd-enabled distributions
 
 
 %prep
 %setup -q
 
+
 %build
 autoreconf -i
 %configure
-
 make %{?_smp_mflags}
 
 
@@ -62,7 +65,30 @@ rm -rf %{buildroot}
     %{_unitdir}/*.service
     %{_unitdir}/*.socket
 }
+
+
+%post
+# enable socket activation for fcgiwrap
+%{?with_systemd:
+    /usr/bin/systemctl enable fcgiwrap.socket
+    /usr/bin/systemctl start fcgiwrap.socket
+
+    cat <<BANNER
+==================================================
+FCGI service fcgiwrap is ready!!!
+==================================================
+BANNER
+}
+
+%preun
+# stop and disable socket activation for fcgiwrap
+%{?with_systemd:
+    /usr/bin/systemctl stop fcgiwrap.socket
+    /usr/bin/systemctl disable fcgiwrap.socket
+}
+
+
 %changelog
 * Tue Apr 22 2014 Justin Zhang <schnell18[AT]gmail.com> - 1.1.0-1
 - version 1.1.0
-- First spec file for the fcgiwrap
+- Create RPM spec file for the fcgiwrap
