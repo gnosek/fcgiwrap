@@ -1,5 +1,5 @@
-%define systemd_test_str %(pkg-config --print-errors libsystemd-daemon 2>&1)
-%if "%{systemd_test_str}" == ""
+%define systemd_test_str %(test -z '$(pkg-config --print-errors libsystemd-daemon 2>&1 |grep "No package")' && echo "yes" || echo "no")
+%if "%{systemd_test_str}" == "yes"
     %define with_systemd 1
 %endif
 
@@ -52,11 +52,10 @@ rm -rf %{buildroot}
 %{_sbindir}/fcgiwrap
 #TODO: figure out why the manpage file is compressed automatically
 %doc %{_mandir}/man8/fcgiwrap.8.gz
-%if %{with_systemd}
-%{_unitdir}/*.service
-%{_unitdir}/*.socket
-%endif
-
+%{?with_systemd:
+    %{_unitdir}/*.service
+    %{_unitdir}/*.socket
+}
 %changelog
 * Tue Apr 22 2014 Justin Zhang <schnell18[AT]gmail.com> - 1.1.0-1
 - version 1.1.0
