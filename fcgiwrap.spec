@@ -1,4 +1,10 @@
-%define systemd_test_str %(test -z '$(pkg-config --print-errors libsystemd-daemon 2>&1 |grep "No package")' && echo "yes" || echo "no")
+%define systemd_test_str %(
+if [[ -z $(pkg-config --print-errors libsystemd-daemon 2>&1) ]]; then
+  echo "yes"
+else
+  echo "no"
+fi
+)
 %if "%{systemd_test_str}" == "yes"
     %define with_systemd 1
 %endif
