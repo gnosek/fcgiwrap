@@ -69,7 +69,7 @@ rm -rf %{buildroot}
 
 %post
 # enable socket activation for fcgiwrap
-%{?with_systemd:
+if [[ -z $(pkg-config --print-errors libsystemd-daemon 2>&1) ]]; then
     /usr/bin/systemctl enable fcgiwrap.socket
     /usr/bin/systemctl start fcgiwrap.socket
 
@@ -78,14 +78,15 @@ rm -rf %{buildroot}
 FCGI service fcgiwrap is ready!!!
 ==================================================
 BANNER
-}
+fi
+
 
 %preun
 # stop and disable socket activation for fcgiwrap
-%{?with_systemd:
+if [[ -z $(pkg-config --print-errors libsystemd-daemon 2>&1) ]]; then
     /usr/bin/systemctl stop fcgiwrap.socket
     /usr/bin/systemctl disable fcgiwrap.socket
-}
+fi
 
 
 %changelog
