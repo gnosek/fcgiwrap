@@ -263,7 +263,7 @@ static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 	if (fc->fd_stdout >= 0) (void)close(fc->fd_stdout);
 	if (fc->fd_stderr >= 0) (void)close(fc->fd_stderr);
 
-	if (fc->cgi_pid)
+	if (fc->cgi_pid > 0)
 		(void)kill(fc->cgi_pid, SIGTERM);
 }
 
