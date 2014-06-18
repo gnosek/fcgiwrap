@@ -888,14 +888,21 @@ int main(int argc, char **argv)
 				allowed_programs[allowed_programs_count++] = strdup(optarg);
 				break;
 			case '?':
-				if (optopt == 'c' || optopt == 's' || optopt == 'p')
-					(void)fprintf(stderr, "Option -%c requires an argument.\n", optopt);
-				else if (isprint(optopt))
-					(void)fprintf(stderr, "Unknown option `-%c'.\n", optopt);
-				else
+				if (optopt >= (int)CHAR_MIN && optopt <= (int)CHAR_MAX) {
+					const char coptopt = (char)optopt;
+					if (coptopt == 'c' || coptopt == 's' || coptopt == 'p')
+						(void)fprintf(stderr, "Option -%c requires an argument.\n", coptopt);
+					else if (isprint(optopt) != 0)
+						(void)fprintf(stderr, "Unknown option `-%c'.\n", coptopt);
+					else
+						(void)fprintf(stderr,
+							"Unknown option character `\\x%x'.\n",
+							(unsigned int)optopt);
+				} else {
 					(void)fprintf(stderr,
 						"Unknown option character `\\x%x'.\n",
-						optopt);
+						(unsigned int)optopt);
+				}
 				return 1;
 			default:
 				abort();
