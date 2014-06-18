@@ -255,16 +255,16 @@ static size_t fcgi_fread(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp, bo
 static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 {
 	if (fc->reply_state == REPLY_STATE_INIT) {
-		FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
-		FCGI_printf("An error occurred while %s\n", msg);
+		(void)FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
+		(void)FCGI_printf("An error occurred while %s\n", msg);
 	}
 
-	if (fc->fd_stdin >= 0) close(fc->fd_stdin);
-	if (fc->fd_stdout >= 0) close(fc->fd_stdout);
-	if (fc->fd_stderr >= 0) close(fc->fd_stderr);
+	if (fc->fd_stdin >= 0) (void)close(fc->fd_stdin);
+	if (fc->fd_stdout >= 0) (void)close(fc->fd_stdout);
+	if (fc->fd_stderr >= 0) (void)close(fc->fd_stderr);
 
 	if (fc->cgi_pid)
-		kill(fc->cgi_pid, SIGTERM);
+		(void)kill(fc->cgi_pid, SIGTERM);
 }
 
 static const char *fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
@@ -327,7 +327,7 @@ out_of_loop:
 		if (nread < 0) {
 			return "reading CGI reply";
 		}
-		close(*fdp);
+		(void)close(*fdp);
 		*fdp = -1;
 	}
 
@@ -347,7 +347,7 @@ static const char * fcgi_pass_raw_fd(int *fdp, int fd_out, char *buf, size_t buf
 		if (nread < 0) {
 			return "reading CGI reply";
 		}
-		close(*fdp);
+		(void)close(*fdp);
 		*fdp = -1;
 	}
 	return NULL;
@@ -370,7 +370,7 @@ static bool fcgi_pass_request(struct fcgi_context *fc)
 			return false;
 		}
 	}
-	close(fc->fd_stdin);
+	(void)close(fc->fd_stdin);
 	fc->fd_stdin = -1;
 
 	return true;
@@ -545,7 +545,7 @@ static void inherit_environment(void)
 	for (p = inherited_environ; *p; p++) {
 		q = strchr(*p, '=');
 		if (!q) {
-			fprintf(stderr, "Suspect value in environment: %s\n", *p);
+			(void)fprintf(stderr, "Suspect value in environment: %s\n", *p);
 			continue;
 		}
 		*q = 0;
@@ -574,14 +574,14 @@ static bool is_allowed_program(const char *program) {
 
 static void cgi_error(const char *message, const char *reason, const char *filename)
 {
-	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
+	(void)printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
 		message, message);
-	fflush(stdout);
+	(void)fflush(stdout);
 	if (filename) {
-		fprintf(stderr, "%s (%s)\n", reason, filename);
+		(void)fprintf(stderr, "%s (%s)\n", reason, filename);
 	} else {
-		fputs(reason, stderr);
-		fputc((int)'\n', stderr);
+		(void)fputs(reason, stderr);
+		(void)fputc((int)'\n', stderr);
 	}
 	_exit(99);
 }
@@ -606,22 +606,22 @@ static void handle_fcgi_request(void)
 			goto err_fork;
 
 		case 0: /* child */
-			close(pipe_in[1]);
-			close(pipe_out[0]);
-			close(pipe_err[0]);
+			(void)close(pipe_in[1]);
+			(void)close(pipe_out[0]);
+			(void)close(pipe_err[0]);
 
-			dup2(pipe_in[0], 0);
-			dup2(pipe_out[1], 1);
-			dup2(pipe_err[1], 2);
+			(void)dup2(pipe_in[0], 0);
+			(void)dup2(pipe_out[1], 1);
+			(void)dup2(pipe_err[1], 2);
 
-			close(pipe_in[0]);
-			close(pipe_out[1]);
-			close(pipe_err[1]);
+			(void)close(pipe_in[0]);
+			(void)close(pipe_out[1]);
+			(void)close(pipe_err[1]);
 
-			close(FCGI_fileno(FCGI_stdout));
+			(void)close(FCGI_fileno(FCGI_stdout));
 
-			signal(SIGCHLD, SIG_DFL);
-			signal(SIGPIPE, SIG_DFL);
+			(void)signal(SIGCHLD, SIG_DFL);
+			(void)signal(SIGPIPE, SIG_DFL);
 
 			filename = get_cgi_filename();
 			inherit_environment();
@@ -641,13 +641,13 @@ static void handle_fcgi_request(void)
 
 			*last_slash = '/';
 
-			execl(filename, filename, (void *)NULL);
+			(void)execl(filename, filename, (void *)NULL);
 			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
 
 		default: /* parent */
-			close(pipe_in[0]);
-			close(pipe_out[1]);
-			close(pipe_err[1]);
+			(void)close(pipe_in[0]);
+			(void)close(pipe_out[1]);
+			(void)close(pipe_err[1]);
 
 			fc.fd_stdin = pipe_in[1];
 			fc.fd_stdout = pipe_out[0];
@@ -660,27 +660,27 @@ static void handle_fcgi_request(void)
 	return;
 
 err_fork:
-	close(pipe_err[0]);
-	close(pipe_err[1]);
+	(void)close(pipe_err[0]);
+	(void)close(pipe_err[1]);
 
 err_pipeerr:
-	close(pipe_out[0]);
-	close(pipe_out[1]);
+	(void)close(pipe_out[0]);
+	(void)close(pipe_out[1]);
 
 err_pipeout:
-	close(pipe_in[0]);
-	close(pipe_in[1]);
+	(void)close(pipe_in[0]);
+	(void)close(pipe_in[1]);
 
 err_pipein:
 
-	FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
-	FCGI_puts("System error");
+	(void)FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
+	(void)FCGI_puts("System error");
 }
 
 static void fcgiwrap_main(void)
 {
-	signal(SIGCHLD, SIG_IGN);
-	signal(SIGPIPE, SIG_IGN);
+	(void)signal(SIGCHLD, SIG_IGN);
+	(void)signal(SIGPIPE, SIG_IGN);
 
 	inherited_environ = environ;
 
@@ -714,7 +714,7 @@ static void prefork(int nchildren)
 		return;
 	}
 
-	signal(SIGCHLD, sigchld_handler);
+	(void)signal(SIGCHLD, sigchld_handler);
 
 	while (1) {
 		while (nrunning < nchildren) {
@@ -725,16 +725,16 @@ static void prefork(int nchildren)
 				nrunning++;
 			} else {
 				if (startup) {
-					fprintf(stderr, "Failed to prefork: %s\n", strerror(errno));
+					(void)fprintf(stderr, "Failed to prefork: %s\n", strerror(errno));
 					exit(1);
 				} else {
-					fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
+					(void)fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
 					break;
 				}
 			}
 		}
 		startup = 0;
-		pause();
+		(void)pause();
 	}
 }
 
@@ -782,7 +782,7 @@ static int setup_socket(char *url) {
 		p += sizeof("unix:") - 1;
 
 		if (strlen(p) >= UNIX_PATH_MAX) {
-			fprintf(stderr, "Socket path too long, exceeds %d characters\n",
+			(void)fprintf(stderr, "Socket path too long, exceeds %d characters\n",
 			        UNIX_PATH_MAX);
 			return -1;
 		}
@@ -827,7 +827,7 @@ static int setup_socket(char *url) {
 		}
 	} else {
 invalid_url:
-		fprintf(stderr, "Valid socket URLs are:\n"
+		(void)fprintf(stderr, "Valid socket URLs are:\n"
 		                "unix:/path/to/socket for Unix sockets\n"
 		                "tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
 		                "tcp6:[ipv6_addr]:port for IPv6 sockets\n");
@@ -862,7 +862,7 @@ int main(int argc, char **argv)
 				stderr_to_fastcgi++;
 				break;
 			case 'h':
-				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
+				(void)printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
 					PACKAGE_NAME" version "PACKAGE_VERSION"\n\n"
 					"Options are:\n"
 					"  -f\t\t\tSend CGI's stderr over FastCGI\n"
@@ -889,11 +889,11 @@ int main(int argc, char **argv)
 				break;
 			case '?':
 				if (optopt == 'c' || optopt == 's' || optopt == 'p')
-					fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+					(void)fprintf(stderr, "Option -%c requires an argument.\n", optopt);
 				else if (isprint(optopt))
-					fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+					(void)fprintf(stderr, "Unknown option `-%c'.\n", optopt);
 				else
-					fprintf(stderr,
+					(void)fprintf(stderr,
 						"Unknown option character `\\x%x'.\n",
 						optopt);
 				return 1;
