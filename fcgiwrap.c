@@ -41,6 +41,7 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -195,6 +196,61 @@ struct fcgi_context {
 	pid_t cgi_pid;
 };
 
+static size_t fcgi_fwrite(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp, bool *error)
+{
+	size_t n;
+
+	n = FCGI_fwrite(ptr, size, nmemb, fp);
+	/* FCGI_fwrite ignores that FCGX_PutStr can return -1. It divides the
+	 * result of a call to FCGX_PutStr by size. So it is necessary to check
+	 * that the result of FCGI_fwrite is not equal to -1 / size. It could be
+	 * that -1 / size is also a valid size_t value and that this check is a
+	 * false positive but it is better to fail than to proceed with an
+	 * invalid value.
+	 */
+	/* FCGI_fwrite can return (size_t)EOF. EOF is defined to be negative,
+	 * but size_t is unsigned. So it is necessary to check that the result
+	 * of FCGI_fwrite is not equal to (size_t)EOF. It could be that
+	 * (size_t)EOF is also a valid size_t value and that this check is a
+	 * false positive but it is better to fail than to proceed with an
+	 * invalid value.
+	 */
+	if (n == -1 / size || n == (size_t)EOF) {
+		*error = true;
+		/* If error is true, the return value is ignored. So the return
+		 * value is irrelevant.
+		 */
+		return 0;
+	} else {
+		*error = false;
+		return n;
+	}
+}
+
+static size_t fcgi_fread(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp, bool *error)
+{
+	size_t n;
+
+	n = FCGI_fread(ptr, size, nmemb, fp);
+	/* FCGI_fread can return (size_t)EOF. EOF is defined to be negative,
+	 * but size_t is unsigned. So it is necessary to check that the result
+	 * of FCGI_fwrite is not equal to (size_t)EOF. It could be that
+	 * (size_t)EOF is also a valid size_t value and that this check is a
+	 * false positive but it is better to fail than to proceed with an
+	 * invalid value.
+	 */
+	if (n == (size_t)EOF) {
+		*error = true;
+		/* If error is true, the return value is ignored. So the return
+		 * value is irrelevant.
+		 */
+		return 0;
+	} else {
+		*error = false;
+		return n;
+	}
+}
+
 static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 {
 	if (fc->reply_state == REPLY_STATE_INIT) {
@@ -259,7 +315,9 @@ out_of_loop:
 			 * buf instead of p.
 			 */
 			const size_t write_size = (size_t)(buf + nread - p);
-			if (FCGI_fwrite(p, 1, write_size, ffp) != write_size) {
+			/* Currently ignored */
+			bool error = true;
+			if (fcgi_fwrite(p, 1, write_size, ffp, &error) != write_size) {
 				return "writing CGI reply";
 			}
 		}
@@ -297,13 +355,11 @@ static bool fcgi_pass_request(struct fcgi_context *fc)
 {
 	char buf[FCGI_BUF_SIZE];
 	size_t nread;
+	/* Currently ignored */
+	bool error = true;
 
 	/* eat the whole request and pass it to CGI */
-	while ((nread = FCGI_fread(buf, 1, sizeof(buf), FCGI_stdin)) > 0) {
-		/* FCGI_fread can return (size_t)EOF. EOF is defined to be
-		 * negative, but size_t is unsigned. So it is necessary to
-		 * filter out (size_t)EOF as a workaround.
-		 */
+	while ((nread = fcgi_fread(buf, 1, sizeof(buf), FCGI_stdin, &error)) > 0) {
 		if (nread == (size_t)EOF) {
 			break;
 		}
