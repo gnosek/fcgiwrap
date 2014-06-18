@@ -41,6 +41,8 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -56,12 +58,14 @@
 #define UNIX_PATH_MAX 108
 #endif
 
+#define LENGTH(x) (sizeof(x) / sizeof((x)[0]))
+
 extern char **environ;
 static char * const * inherited_environ;
 static const char **allowed_programs;
 static size_t allowed_programs_count;
 
-static const char * blacklisted_env_vars[] = {
+static const char * const blacklisted_env_vars[] = {
 	"AUTH_TYPE",
 	"CONTENT_LENGTH",
 	"CONTENT_TYPE",
@@ -78,28 +82,28 @@ static const char * blacklisted_env_vars[] = {
 	"SERVER_NAME",
 	"SERVER_PORT",
 	"SERVER_PROTOCOL",
-	"SERVER_SOFTWARE",
-	NULL,
+	"SERVER_SOFTWARE"
 };
 
-static int stderr_to_fastcgi = 0;
+static bool stderr_to_fastcgi = false;
 
 
 #define FCGI_BUF_SIZE 4096
 
-static int write_all(int fd, char *buf, size_t size)
+static ssize_t write_all(int fd, char *buf, size_t size)
 {
-	size_t nleft = size;
+	/* Assume that size <= SSIZE_MAX */
+	ssize_t nleft = (ssize_t)size;
 	while (nleft > 0) {
 		ssize_t nwritten = write(fd, buf, nleft);
 		if (nwritten < 0)
-			return nleft - size; /* zero or negative to indicate error */
+			return nleft - (ssize_t)size; /* zero or negative to indicate error */
 
 		buf += nwritten;
 		nleft -= nwritten;
 	}
 
-	return size;
+	return (ssize_t)size;
 }
 
 #define MAX_VA_SENTINEL INT_MIN
@@ -189,30 +193,86 @@ struct fcgi_context {
 	int fd_stdin;
 	int fd_stdout;
 	int fd_stderr;
-	unsigned int reply_state;
+	enum reply_state_t reply_state;
 	pid_t cgi_pid;
 };
+
+static size_t fcgi_fwrite(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp, bool *error)
+{
+	size_t n;
+
+	n = FCGI_fwrite(ptr, size, nmemb, fp);
+	/* FCGI_fwrite ignores that FCGX_PutStr can return -1. It divides the
+	 * result of a call to FCGX_PutStr by size. So it is necessary to check
+	 * that the result of FCGI_fwrite is not equal to -1 / size. It could be
+	 * that -1 / size is also a valid size_t value and that this check is a
+	 * false positive but it is better to fail than to proceed with an
+	 * invalid value.
+	 */
+	/* FCGI_fwrite can return (size_t)EOF. EOF is defined to be negative,
+	 * but size_t is unsigned. So it is necessary to check that the result
+	 * of FCGI_fwrite is not equal to (size_t)EOF. It could be that
+	 * (size_t)EOF is also a valid size_t value and that this check is a
+	 * false positive but it is better to fail than to proceed with an
+	 * invalid value.
+	 */
+	if (n == -1 / size || n == (size_t)EOF) {
+		*error = true;
+		/* If error is true, the return value is ignored. So the return
+		 * value is irrelevant.
+		 */
+		return 0;
+	} else {
+		*error = false;
+		return n;
+	}
+}
+
+static size_t fcgi_fread(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp, bool *error)
+{
+	size_t n;
+
+	n = FCGI_fread(ptr, size, nmemb, fp);
+	/* FCGI_fread can return (size_t)EOF. EOF is defined to be negative,
+	 * but size_t is unsigned. So it is necessary to check that the result
+	 * of FCGI_fwrite is not equal to (size_t)EOF. It could be that
+	 * (size_t)EOF is also a valid size_t value and that this check is a
+	 * false positive but it is better to fail than to proceed with an
+	 * invalid value.
+	 */
+	if (n == (size_t)EOF) {
+		*error = true;
+		/* If error is true, the return value is ignored. So the return
+		 * value is irrelevant.
+		 */
+		return 0;
+	} else {
+		*error = false;
+		return n;
+	}
+}
 
 static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 {
 	if (fc->reply_state == REPLY_STATE_INIT) {
-		FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
-		FCGI_printf("An error occurred while %s\n", msg);
+		(void)FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
+		(void)FCGI_printf("An error occurred while %s\n", msg);
 	}
 
-	if (fc->fd_stdin >= 0) close(fc->fd_stdin);
-	if (fc->fd_stdout >= 0) close(fc->fd_stdout);
-	if (fc->fd_stderr >= 0) close(fc->fd_stderr);
+	if (fc->fd_stdin >= 0) (void)close(fc->fd_stdin);
+	if (fc->fd_stdout >= 0) (void)close(fc->fd_stdout);
+	if (fc->fd_stderr >= 0) (void)close(fc->fd_stderr);
 
-	if (fc->cgi_pid)
-		kill(SIGTERM, fc->cgi_pid);
+	if (fc->cgi_pid > 0)
+		(void)kill(fc->cgi_pid, SIGTERM);
 }
 
-static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
+static const char *fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
 {
 	ssize_t nread;
 	char *p = buf;
-	unsigned char cclass, next_state;
+	enum char_class_t cclass;
+	enum reply_state_t next_state;
 
 	nread = read(*fdp, buf, bufsize);
 	if (nread > 0) {
@@ -237,14 +297,14 @@ static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *f
 					goto next_char;
 
 				case ACTION_EXTRA_CR:
-					if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
+					if (FCGI_fputc((int)'\r', ffp) == EOF) return "writing CGI reply";
 					break;
 
 				case ACTION_EXTRA_LF:
-					if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
+					if (FCGI_fputc((int)'\n', ffp) == EOF) return "writing CGI reply";
 					break;
 			}
-			if (FCGI_fputc(*p, ffp) == EOF) {
+			if (FCGI_fputc((int)*p, ffp) == EOF) {
 				return "writing CGI reply";
 			}
 next_char:
@@ -252,7 +312,14 @@ next_char:
 		}
 out_of_loop:
 		if (p < buf + nread) {
-			if (FCGI_fwrite(p, 1, buf + nread - p, ffp) != (size_t)(buf + nread - p)) {
+			/* It is not clear if a cast from ptrdiff_t to size_t
+			 * is valid. It would be better to use an index into
+			 * buf instead of p.
+			 */
+			const size_t write_size = (size_t)(buf + nread - p);
+			/* Currently ignored */
+			bool error = true;
+			if (fcgi_fwrite(p, 1, write_size, ffp, &error) != write_size) {
 				return "writing CGI reply";
 			}
 		}
@@ -260,7 +327,7 @@ out_of_loop:
 		if (nread < 0) {
 			return "reading CGI reply";
 		}
-		close(*fdp);
+		(void)close(*fdp);
 		*fdp = -1;
 	}
 
@@ -280,7 +347,7 @@ static const char * fcgi_pass_raw_fd(int *fdp, int fd_out, char *buf, size_t buf
 		if (nread < 0) {
 			return "reading CGI reply";
 		}
-		close(*fdp);
+		(void)close(*fdp);
 		*fdp = -1;
 	}
 	return NULL;
@@ -289,16 +356,21 @@ static const char * fcgi_pass_raw_fd(int *fdp, int fd_out, char *buf, size_t buf
 static bool fcgi_pass_request(struct fcgi_context *fc)
 {
 	char buf[FCGI_BUF_SIZE];
-	ssize_t nread;
+	size_t nread;
+	/* Currently ignored */
+	bool error = true;
 
 	/* eat the whole request and pass it to CGI */
-	while ((nread = FCGI_fread(buf, 1, sizeof(buf), FCGI_stdin)) > 0) {
+	while ((nread = fcgi_fread(buf, 1, sizeof(buf), FCGI_stdin, &error)) > 0) {
+		if (nread == (size_t)EOF) {
+			break;
+		}
 		if (write_all(fc->fd_stdin, buf, nread) <= 0) {
 			fcgi_finish(fc, "reading the request");
 			return false;
 		}
 	}
-	close(fc->fd_stdin);
+	(void)close(fc->fd_stdin);
 	fc->fd_stdin = -1;
 
 	return true;
@@ -328,7 +400,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 		}
 		if (fc->fd_stdout >= 0 && FD_ISSET(fc->fd_stdout, &rset)) {
 			err = fcgi_pass_fd(fc, &fc->fd_stdout, FCGI_stdout, buf, sizeof(buf));
-			if (err) {
+			if (err != NULL) {
 				fcgi_finish(fc, err);
 				return;
 			}
@@ -382,20 +454,20 @@ static int check_file_perms(const char *path)
 
 static char *get_cgi_filename(void) /* and fixup environment */
 {
-	int buflen = 1, docrootlen;
+	size_t buflen = 1, docrootlen;
 	char *buf = NULL;
 	char *docroot, *scriptname, *p;
 
-	int rf_len;
+	size_t rf_len;
 	char *pathinfo = NULL;
 
-	if ((p = getenv("SCRIPT_FILENAME"))) {
+	if ((p = getenv("SCRIPT_FILENAME")) != NULL) {
 		if (check_file_perms(p) != 0)
 			goto err;
 		return strdup(p);
 	}
 
-	if ((p = getenv("DOCUMENT_ROOT"))) {
+	if ((p = getenv("DOCUMENT_ROOT")) != NULL) {
 		docroot = p;
 		docrootlen = strlen(p);
 		buflen += docrootlen;
@@ -403,7 +475,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 		goto err;
 	}
 
-	if ((p = getenv("SCRIPT_NAME"))) {
+	if ((p = getenv("SCRIPT_NAME")) != NULL) {
 		buflen += strlen(p);
 		scriptname = p;
 	} else {
@@ -411,16 +483,16 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	}
 
 	buf = malloc(buflen);
-	if (!buf) goto err;
+	if (buf == NULL) goto err;
 
 	strcpy(buf, docroot);
 	strcpy(buf + docrootlen, scriptname);
 	pathinfo = strdup(buf);
-	if (!pathinfo) {
+	if (pathinfo == NULL) {
 		goto err;
 	}
 
-	while(1) {
+	while(true) {
 		switch(check_file_perms(buf)) {
 			case -EACCES:
 				goto err;
@@ -436,8 +508,8 @@ static char *get_cgi_filename(void) /* and fixup environment */
 				return buf;
 			default:
 				p = strrchr(buf, '/');
-				if (!p) goto err;
-				*p = 0;
+				if (p == NULL) goto err;
+				*p = '\0';
 		}
 	}
 
@@ -449,15 +521,15 @@ err:
 
 static int blacklisted_env(const char *var_name, const char *var_name_end)
 {
-	const char **p;
+	size_t i;
 
-	if (var_name_end - var_name > 4 && !strncmp(var_name, "HTTP", 4)) {
+	if (var_name_end - var_name > 4 && strncmp(var_name, "HTTP", 4) == 0) {
 		/* HTTP_*, HTTPS */
 		return 1;
 	}
 
-	for (p = blacklisted_env_vars; *p; p++) {
-		if (!strcmp(var_name, *p)) {
+	for (i = 0; i < LENGTH(blacklisted_env_vars); i++) {
+		if (strcmp(var_name, blacklisted_env_vars[i]) == 0) {
 			return 1;
 		}
 	}
@@ -472,13 +544,13 @@ static void inherit_environment(void)
 
 	for (p = inherited_environ; *p; p++) {
 		q = strchr(*p, '=');
-		if (!q) {
-			fprintf(stderr, "Suspect value in environment: %s\n", *p);
+		if (q == NULL) {
+			(void)fprintf(stderr, "Suspect value in environment: %s\n", *p);
 			continue;
 		}
-		*q = 0;
+		*q = '\0';
 
-		if (!getenv(*p) && !blacklisted_env(*p, q)) {
+		if (getenv(*p) == NULL && blacklisted_env(*p, q) == 0) {
 			*q = '=';
 			putenv(*p);
 		}
@@ -489,11 +561,11 @@ static void inherit_environment(void)
 
 static bool is_allowed_program(const char *program) {
 	size_t i;
-	if (!allowed_programs_count)
+	if (allowed_programs_count == 0)
 		return true;
 
 	for (i = 0; i < allowed_programs_count; i++) {
-		if (!strcmp(allowed_programs[i], program))
+		if (strcmp(allowed_programs[i], program) == 0)
 			return true;
 	}
 
@@ -502,14 +574,14 @@ static bool is_allowed_program(const char *program) {
 
 static void cgi_error(const char *message, const char *reason, const char *filename)
 {
-	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
+	(void)printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
 		message, message);
-	fflush(stdout);
-	if (filename) {
-		fprintf(stderr, "%s (%s)\n", reason, filename);
+	(void)fflush(stdout);
+	if (filename != NULL) {
+		(void)fprintf(stderr, "%s (%s)\n", reason, filename);
 	} else {
-		fputs(reason, stderr);
-		fputc('\n', stderr);
+		(void)fputs(reason, stderr);
+		(void)fputc((int)'\n', stderr);
 	}
 	_exit(99);
 }
@@ -534,48 +606,48 @@ static void handle_fcgi_request(void)
 			goto err_fork;
 
 		case 0: /* child */
-			close(pipe_in[1]);
-			close(pipe_out[0]);
-			close(pipe_err[0]);
+			(void)close(pipe_in[1]);
+			(void)close(pipe_out[0]);
+			(void)close(pipe_err[0]);
 
-			dup2(pipe_in[0], 0);
-			dup2(pipe_out[1], 1);
-			dup2(pipe_err[1], 2);
+			(void)dup2(pipe_in[0], 0);
+			(void)dup2(pipe_out[1], 1);
+			(void)dup2(pipe_err[1], 2);
 
-			close(pipe_in[0]);
-			close(pipe_out[1]);
-			close(pipe_err[1]);
+			(void)close(pipe_in[0]);
+			(void)close(pipe_out[1]);
+			(void)close(pipe_err[1]);
 
-			close(FCGI_fileno(FCGI_stdout));
+			(void)close(FCGI_fileno(FCGI_stdout));
 
-			signal(SIGCHLD, SIG_DFL);
-			signal(SIGPIPE, SIG_DFL);
+			(void)signal(SIGCHLD, SIG_DFL);
+			(void)signal(SIGPIPE, SIG_DFL);
 
 			filename = get_cgi_filename();
 			inherit_environment();
-			if (!filename)
+			if (filename == NULL)
 				cgi_error("403 Forbidden", "Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
 
 			if (!is_allowed_program(filename))
 				cgi_error("403 Forbidden", "The given script is not allowed to execute", filename);
 
 			last_slash = strrchr(filename, '/');
-			if (!last_slash)
+			if (last_slash == NULL)
 				cgi_error("403 Forbidden", "Script name must be a fully qualified path", filename);
 
-			*last_slash = 0;
+			*last_slash = '\0';
 			if (chdir(filename) < 0)
 				cgi_error("403 Forbidden", "Cannot chdir to script directory", filename);
 
 			*last_slash = '/';
 
-			execl(filename, filename, (void *)NULL);
+			(void)execl(filename, filename, (void *)NULL);
 			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
 
 		default: /* parent */
-			close(pipe_in[0]);
-			close(pipe_out[1]);
-			close(pipe_err[1]);
+			(void)close(pipe_in[0]);
+			(void)close(pipe_out[1]);
+			(void)close(pipe_err[1]);
 
 			fc.fd_stdin = pipe_in[1];
 			fc.fd_stdout = pipe_out[0];
@@ -588,27 +660,27 @@ static void handle_fcgi_request(void)
 	return;
 
 err_fork:
-	close(pipe_err[0]);
-	close(pipe_err[1]);
+	(void)close(pipe_err[0]);
+	(void)close(pipe_err[1]);
 
 err_pipeerr:
-	close(pipe_out[0]);
-	close(pipe_out[1]);
+	(void)close(pipe_out[0]);
+	(void)close(pipe_out[1]);
 
 err_pipeout:
-	close(pipe_in[0]);
-	close(pipe_in[1]);
+	(void)close(pipe_in[0]);
+	(void)close(pipe_in[1]);
 
 err_pipein:
 
-	FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
-	FCGI_puts("System error");
+	(void)FCGI_puts("Status: 502 Bad Gateway\nContent-type: text/plain\n");
+	(void)FCGI_puts("System error");
 }
 
 static void fcgiwrap_main(void)
 {
-	signal(SIGCHLD, SIG_IGN);
-	signal(SIGPIPE, SIG_IGN);
+	(void)signal(SIGCHLD, SIG_IGN);
+	(void)signal(SIGPIPE, SIG_IGN);
 
 	inherited_environ = environ;
 
@@ -636,15 +708,15 @@ static void sigchld_handler(int dummy)
 
 static void prefork(int nchildren)
 {
-	int startup = 1;
+	bool startup = true;
 
 	if (nchildren == 1) {
 		return;
 	}
 
-	signal(SIGCHLD, sigchld_handler);
+	(void)signal(SIGCHLD, sigchld_handler);
 
-	while (1) {
+	while (true) {
 		while (nrunning < nchildren) {
 			pid_t pid = fork();
 			if (pid == 0) {
@@ -653,16 +725,16 @@ static void prefork(int nchildren)
 				nrunning++;
 			} else {
 				if (startup) {
-					fprintf(stderr, "Failed to prefork: %s\n", strerror(errno));
+					(void)fprintf(stderr, "Failed to prefork: %s\n", strerror(errno));
 					exit(1);
 				} else {
-					fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
+					(void)fprintf(stderr, "Failed to fork: %s\n", strerror(errno));
 					break;
 				}
 			}
 		}
-		startup = 0;
-		pause();
+		startup = false;
+		(void)pause();
 	}
 }
 
@@ -673,7 +745,10 @@ static int listen_on_fd(int fd) {
 		perror("Failed to listen");
 		return -1;
 	}
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
+	/* If the maximum value of socklen_t exceeds SIZE_MAX, casting size_t
+	 * to socklen_t is not safe.
+	 */
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, (socklen_t)sizeof one) < 0) {
 		perror("Failed to enable SO_REUSEADDR");
 		return -1;
 	}
@@ -703,11 +778,11 @@ static int setup_socket(char *url) {
 		struct sockaddr_in6 sa_in6;
 	} sa;
 
-	if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+	if (strncmp(p, "unix:", sizeof("unix:") - 1) == 0) {
 		p += sizeof("unix:") - 1;
 
 		if (strlen(p) >= UNIX_PATH_MAX) {
-			fprintf(stderr, "Socket path too long, exceeds %d characters\n",
+			(void)fprintf(stderr, "Socket path too long, exceeds %d characters\n",
 			        UNIX_PATH_MAX);
 			return -1;
 		}
@@ -715,11 +790,11 @@ static int setup_socket(char *url) {
 		sockaddr_size = sizeof sa.sa_un;
 		sa.sa_un.sun_family = AF_UNIX;
 		strcpy(sa.sa_un.sun_path, p);
-	} else if (!strncmp(p, "tcp:", sizeof("tcp:") - 1)) {
+	} else if (strncmp(p, "tcp:", sizeof("tcp:") - 1) == 0) {
 		p += sizeof("tcp:") - 1;
 
 		q = strchr(p, ':');
-		if (!q) {
+		if (q == NULL) {
 			goto invalid_url;
 		}
 		port = atoi(q+1);
@@ -733,10 +808,10 @@ static int setup_socket(char *url) {
 		if (inet_pton(AF_INET, p, &sa.sa_in.sin_addr) < 1) {
 			goto invalid_url;
 		}
-	} else if (!strncmp(p, "tcp6:[", sizeof("tcp6:[") - 1)) {
+	} else if (strncmp(p, "tcp6:[", sizeof("tcp6:[") - 1) == 0) {
 		p += sizeof("tcp6:[") - 1;
 		q = strchr(p, ']');
-		if (!q || !q[0] || q[1] != ':') {
+		if (q == NULL || q[0] == '\0' || q[1] != ':') {
 			goto invalid_url;
 		}
 		port = atoi(q+2);
@@ -752,7 +827,7 @@ static int setup_socket(char *url) {
 		}
 	} else {
 invalid_url:
-		fprintf(stderr, "Valid socket URLs are:\n"
+		(void)fprintf(stderr, "Valid socket URLs are:\n"
 		                "unix:/path/to/socket for Unix sockets\n"
 		                "tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
 		                "tcp6:[ipv6_addr]:port for IPv6 sockets\n");
@@ -764,6 +839,9 @@ invalid_url:
 		perror("Failed to create socket");
 		return -1;
 	}
+	/* If the maximum value of socklen_t exceeds SIZE_MAX, casting size_t
+	 * to socklen_t is not safe.
+	 */
 	if (bind(fd, &sa.sa, sockaddr_size) < 0) {
 		perror("Failed to bind");
 		return -1;
@@ -781,10 +859,10 @@ int main(int argc, char **argv)
 	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
 		switch (c) {
 			case 'f':
-				stderr_to_fastcgi++;
+				stderr_to_fastcgi = true;
 				break;
 			case 'h':
-				printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
+				(void)printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
 					PACKAGE_NAME" version "PACKAGE_VERSION"\n\n"
 					"Options are:\n"
 					"  -f\t\t\tSend CGI's stderr over FastCGI\n"
@@ -805,19 +883,26 @@ int main(int argc, char **argv)
 				break;
 			case 'p':
 				allowed_programs = realloc(allowed_programs, (allowed_programs_count + 1) * sizeof (char *));
-				if (!allowed_programs)
+				if (allowed_programs == NULL)
 					abort();
 				allowed_programs[allowed_programs_count++] = strdup(optarg);
 				break;
 			case '?':
-				if (optopt == 'c' || optopt == 's' || optopt == 'p')
-					fprintf(stderr, "Option -%c requires an argument.\n", optopt);
-				else if (isprint(optopt))
-					fprintf(stderr, "Unknown option `-%c'.\n", optopt);
-				else
-					fprintf(stderr,
+				if (optopt >= (int)CHAR_MIN && optopt <= (int)CHAR_MAX) {
+					const char coptopt = (char)optopt;
+					if (coptopt == 'c' || coptopt == 's' || coptopt == 'p')
+						(void)fprintf(stderr, "Option -%c requires an argument.\n", coptopt);
+					else if (isprint(optopt) != 0)
+						(void)fprintf(stderr, "Unknown option `-%c'.\n", coptopt);
+					else
+						(void)fprintf(stderr,
+							"Unknown option character `\\x%x'.\n",
+							(unsigned int)optopt);
+				} else {
+					(void)fprintf(stderr,
 						"Unknown option character `\\x%x'.\n",
-						optopt);
+						(unsigned int)optopt);
+				}
 				return 1;
 			default:
 				abort();
