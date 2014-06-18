@@ -400,7 +400,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 		}
 		if (fc->fd_stdout >= 0 && FD_ISSET(fc->fd_stdout, &rset)) {
 			err = fcgi_pass_fd(fc, &fc->fd_stdout, FCGI_stdout, buf, sizeof(buf));
-			if (err) {
+			if (err != NULL) {
 				fcgi_finish(fc, err);
 				return;
 			}
@@ -461,13 +461,13 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	size_t rf_len;
 	char *pathinfo = NULL;
 
-	if ((p = getenv("SCRIPT_FILENAME"))) {
+	if ((p = getenv("SCRIPT_FILENAME")) != NULL) {
 		if (check_file_perms(p) != 0)
 			goto err;
 		return strdup(p);
 	}
 
-	if ((p = getenv("DOCUMENT_ROOT"))) {
+	if ((p = getenv("DOCUMENT_ROOT")) != NULL) {
 		docroot = p;
 		docrootlen = strlen(p);
 		buflen += docrootlen;
@@ -475,7 +475,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 		goto err;
 	}
 
-	if ((p = getenv("SCRIPT_NAME"))) {
+	if ((p = getenv("SCRIPT_NAME")) != NULL) {
 		buflen += strlen(p);
 		scriptname = p;
 	} else {
@@ -483,12 +483,12 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	}
 
 	buf = malloc(buflen);
-	if (!buf) goto err;
+	if (buf == NULL) goto err;
 
 	strcpy(buf, docroot);
 	strcpy(buf + docrootlen, scriptname);
 	pathinfo = strdup(buf);
-	if (!pathinfo) {
+	if (pathinfo == NULL) {
 		goto err;
 	}
 
@@ -508,7 +508,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 				return buf;
 			default:
 				p = strrchr(buf, '/');
-				if (!p) goto err;
+				if (p == NULL) goto err;
 				*p = 0;
 		}
 	}
@@ -523,13 +523,13 @@ static int blacklisted_env(const char *var_name, const char *var_name_end)
 {
 	size_t i;
 
-	if (var_name_end - var_name > 4 && !strncmp(var_name, "HTTP", 4)) {
+	if (var_name_end - var_name > 4 && strncmp(var_name, "HTTP", 4) == 0) {
 		/* HTTP_*, HTTPS */
 		return 1;
 	}
 
 	for (i = 0; i < LENGTH(blacklisted_env_vars); i++) {
-		if (!strcmp(var_name, blacklisted_env_vars[i])) {
+		if (strcmp(var_name, blacklisted_env_vars[i]) == 0) {
 			return 1;
 		}
 	}
@@ -544,13 +544,13 @@ static void inherit_environment(void)
 
 	for (p = inherited_environ; *p; p++) {
 		q = strchr(*p, '=');
-		if (!q) {
+		if (q == NULL) {
 			(void)fprintf(stderr, "Suspect value in environment: %s\n", *p);
 			continue;
 		}
 		*q = 0;
 
-		if (!getenv(*p) && !blacklisted_env(*p, q)) {
+		if (getenv(*p) == NULL && blacklisted_env(*p, q) == 0) {
 			*q = '=';
 			putenv(*p);
 		}
@@ -565,7 +565,7 @@ static bool is_allowed_program(const char *program) {
 		return true;
 
 	for (i = 0; i < allowed_programs_count; i++) {
-		if (!strcmp(allowed_programs[i], program))
+		if (strcmp(allowed_programs[i], program) == 0)
 			return true;
 	}
 
@@ -577,7 +577,7 @@ static void cgi_error(const char *message, const char *reason, const char *filen
 	(void)printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
 		message, message);
 	(void)fflush(stdout);
-	if (filename) {
+	if (filename != NULL) {
 		(void)fprintf(stderr, "%s (%s)\n", reason, filename);
 	} else {
 		(void)fputs(reason, stderr);
@@ -625,14 +625,14 @@ static void handle_fcgi_request(void)
 
 			filename = get_cgi_filename();
 			inherit_environment();
-			if (!filename)
+			if (filename == NULL)
 				cgi_error("403 Forbidden", "Cannot get script name, are DOCUMENT_ROOT and SCRIPT_NAME (or SCRIPT_FILENAME) set and is the script executable?", NULL);
 
 			if (!is_allowed_program(filename))
 				cgi_error("403 Forbidden", "The given script is not allowed to execute", filename);
 
 			last_slash = strrchr(filename, '/');
-			if (!last_slash)
+			if (last_slash == NULL)
 				cgi_error("403 Forbidden", "Script name must be a fully qualified path", filename);
 
 			*last_slash = 0;
@@ -778,7 +778,7 @@ static int setup_socket(char *url) {
 		struct sockaddr_in6 sa_in6;
 	} sa;
 
-	if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+	if (strncmp(p, "unix:", sizeof("unix:") - 1) == 0) {
 		p += sizeof("unix:") - 1;
 
 		if (strlen(p) >= UNIX_PATH_MAX) {
@@ -790,11 +790,11 @@ static int setup_socket(char *url) {
 		sockaddr_size = sizeof sa.sa_un;
 		sa.sa_un.sun_family = AF_UNIX;
 		strcpy(sa.sa_un.sun_path, p);
-	} else if (!strncmp(p, "tcp:", sizeof("tcp:") - 1)) {
+	} else if (strncmp(p, "tcp:", sizeof("tcp:") - 1) == 0) {
 		p += sizeof("tcp:") - 1;
 
 		q = strchr(p, ':');
-		if (!q) {
+		if (q == NULL) {
 			goto invalid_url;
 		}
 		port = atoi(q+1);
@@ -808,10 +808,10 @@ static int setup_socket(char *url) {
 		if (inet_pton(AF_INET, p, &sa.sa_in.sin_addr) < 1) {
 			goto invalid_url;
 		}
-	} else if (!strncmp(p, "tcp6:[", sizeof("tcp6:[") - 1)) {
+	} else if (strncmp(p, "tcp6:[", sizeof("tcp6:[") - 1) == 0) {
 		p += sizeof("tcp6:[") - 1;
 		q = strchr(p, ']');
-		if (!q || !q[0] || q[1] != ':') {
+		if (q == NULL || !q[0] || q[1] != ':') {
 			goto invalid_url;
 		}
 		port = atoi(q+2);
@@ -883,7 +883,7 @@ int main(int argc, char **argv)
 				break;
 			case 'p':
 				allowed_programs = realloc(allowed_programs, (allowed_programs_count + 1) * sizeof (char *));
-				if (!allowed_programs)
+				if (allowed_programs == NULL)
 					abort();
 				allowed_programs[allowed_programs_count++] = strdup(optarg);
 				break;
