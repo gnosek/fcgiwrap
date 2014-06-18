@@ -88,19 +88,20 @@ static int stderr_to_fastcgi = 0;
 
 #define FCGI_BUF_SIZE 4096
 
-static int write_all(int fd, char *buf, size_t size)
+static ssize_t write_all(int fd, char *buf, size_t size)
 {
-	size_t nleft = size;
+	/* Assume that size <= SSIZE_MAX */
+	ssize_t nleft = (ssize_t)size;
 	while (nleft > 0) {
 		ssize_t nwritten = write(fd, buf, nleft);
 		if (nwritten < 0)
-			return nleft - size; /* zero or negative to indicate error */
+			return nleft - (ssize_t)size; /* zero or negative to indicate error */
 
 		buf += nwritten;
 		nleft -= nwritten;
 	}
 
-	return size;
+	return (ssize_t)size;
 }
 
 #define MAX_VA_SENTINEL INT_MIN
@@ -253,7 +254,12 @@ next_char:
 		}
 out_of_loop:
 		if (p < buf + nread) {
-			if (FCGI_fwrite(p, 1, buf + nread - p, ffp) != (size_t)(buf + nread - p)) {
+			/* It is not clear if a cast from ptrdiff_t to size_t
+			 * is valid. It would be better to use an index into
+			 * buf instead of p.
+			 */
+			const size_t write_size = (size_t)(buf + nread - p);
+			if (FCGI_fwrite(p, 1, write_size, ffp) != write_size) {
 				return "writing CGI reply";
 			}
 		}
@@ -290,10 +296,17 @@ static const char * fcgi_pass_raw_fd(int *fdp, int fd_out, char *buf, size_t buf
 static bool fcgi_pass_request(struct fcgi_context *fc)
 {
 	char buf[FCGI_BUF_SIZE];
-	ssize_t nread;
+	size_t nread;
 
 	/* eat the whole request and pass it to CGI */
 	while ((nread = FCGI_fread(buf, 1, sizeof(buf), FCGI_stdin)) > 0) {
+		/* FCGI_fread can return (size_t)EOF. EOF is defined to be
+		 * negative, but size_t is unsigned. So it is necessary to
+		 * filter out (size_t)EOF as a workaround.
+		 */
+		if (nread == (size_t)EOF) {
+			break;
+		}
 		if (write_all(fc->fd_stdin, buf, nread) <= 0) {
 			fcgi_finish(fc, "reading the request");
 			return false;
@@ -383,11 +396,11 @@ static int check_file_perms(const char *path)
 
 static char *get_cgi_filename(void) /* and fixup environment */
 {
-	int buflen = 1, docrootlen;
+	size_t buflen = 1, docrootlen;
 	char *buf = NULL;
 	char *docroot, *scriptname, *p;
 
-	int rf_len;
+	size_t rf_len;
 	char *pathinfo = NULL;
 
 	if ((p = getenv("SCRIPT_FILENAME"))) {
@@ -490,7 +503,7 @@ static void inherit_environment(void)
 
 static bool is_allowed_program(const char *program) {
 	size_t i;
-	if (!allowed_programs_count)
+	if (allowed_programs_count == 0)
 		return true;
 
 	for (i = 0; i < allowed_programs_count; i++) {
@@ -674,7 +687,10 @@ static int listen_on_fd(int fd) {
 		perror("Failed to listen");
 		return -1;
 	}
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
+	/* If the maximum value of socklen_t exceeds SIZE_MAX, casting size_t
+	 * to socklen_t is not safe.
+	 */
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, (socklen_t)sizeof one) < 0) {
 		perror("Failed to enable SO_REUSEADDR");
 		return -1;
 	}
@@ -765,6 +781,9 @@ invalid_url:
 		perror("Failed to create socket");
 		return -1;
 	}
+	/* If the maximum value of socklen_t exceeds SIZE_MAX, casting size_t
+	 * to socklen_t is not safe.
+	 */
 	if (bind(fd, &sa.sa, sockaddr_size) < 0) {
 		perror("Failed to bind");
 		return -1;
