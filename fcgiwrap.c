@@ -267,7 +267,7 @@ static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 		kill(fc->cgi_pid, SIGTERM);
 }
 
-static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
+static const char *fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
 {
 	ssize_t nread;
 	char *p = buf;
@@ -297,14 +297,14 @@ static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *f
 					goto next_char;
 
 				case ACTION_EXTRA_CR:
-					if (FCGI_fputc('\r', ffp) == EOF) return "writing CGI reply";
+					if (FCGI_fputc((int)'\r', ffp) == EOF) return "writing CGI reply";
 					break;
 
 				case ACTION_EXTRA_LF:
-					if (FCGI_fputc('\n', ffp) == EOF) return "writing CGI reply";
+					if (FCGI_fputc((int)'\n', ffp) == EOF) return "writing CGI reply";
 					break;
 			}
-			if (FCGI_fputc(*p, ffp) == EOF) {
+			if (FCGI_fputc((int)*p, ffp) == EOF) {
 				return "writing CGI reply";
 			}
 next_char:
@@ -581,7 +581,7 @@ static void cgi_error(const char *message, const char *reason, const char *filen
 		fprintf(stderr, "%s (%s)\n", reason, filename);
 	} else {
 		fputs(reason, stderr);
-		fputc('\n', stderr);
+		fputc((int)'\n', stderr);
 	}
 	_exit(99);
 }
