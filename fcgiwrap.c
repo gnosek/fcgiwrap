@@ -193,7 +193,7 @@ struct fcgi_context {
 	int fd_stdin;
 	int fd_stdout;
 	int fd_stderr;
-	unsigned int reply_state;
+	enum reply_state_t reply_state;
 	pid_t cgi_pid;
 };
 
@@ -271,7 +271,8 @@ static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *f
 {
 	ssize_t nread;
 	char *p = buf;
-	unsigned char cclass, next_state;
+	enum char_class_t cclass;
+	enum reply_state_t next_state;
 
 	nread = read(*fdp, buf, bufsize);
 	if (nread > 0) {
