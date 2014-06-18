@@ -509,7 +509,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 			default:
 				p = strrchr(buf, '/');
 				if (p == NULL) goto err;
-				*p = 0;
+				*p = '\0';
 		}
 	}
 
@@ -548,7 +548,7 @@ static void inherit_environment(void)
 			(void)fprintf(stderr, "Suspect value in environment: %s\n", *p);
 			continue;
 		}
-		*q = 0;
+		*q = '\0';
 
 		if (getenv(*p) == NULL && blacklisted_env(*p, q) == 0) {
 			*q = '=';
@@ -635,7 +635,7 @@ static void handle_fcgi_request(void)
 			if (last_slash == NULL)
 				cgi_error("403 Forbidden", "Script name must be a fully qualified path", filename);
 
-			*last_slash = 0;
+			*last_slash = '\0';
 			if (chdir(filename) < 0)
 				cgi_error("403 Forbidden", "Cannot chdir to script directory", filename);
 
@@ -811,7 +811,7 @@ static int setup_socket(char *url) {
 	} else if (strncmp(p, "tcp6:[", sizeof("tcp6:[") - 1) == 0) {
 		p += sizeof("tcp6:[") - 1;
 		q = strchr(p, ']');
-		if (q == NULL || !q[0] || q[1] != ':') {
+		if (q == NULL || q[0] == '\0' || q[1] != ':') {
 			goto invalid_url;
 		}
 		port = atoi(q+2);
