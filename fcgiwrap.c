@@ -264,7 +264,7 @@ static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 	if (fc->fd_stderr >= 0) close(fc->fd_stderr);
 
 	if (fc->cgi_pid)
-		kill(SIGTERM, fc->cgi_pid);
+		kill(fc->cgi_pid, SIGTERM);
 }
 
 static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
