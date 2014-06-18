@@ -56,12 +56,14 @@
 #define UNIX_PATH_MAX 108
 #endif
 
+#define LENGTH(x) (sizeof(x) / sizeof((x)[0]))
+
 extern char **environ;
 static char * const * inherited_environ;
 static const char **allowed_programs;
 static size_t allowed_programs_count;
 
-static const char * blacklisted_env_vars[] = {
+static const char * const blacklisted_env_vars[] = {
 	"AUTH_TYPE",
 	"CONTENT_LENGTH",
 	"CONTENT_TYPE",
@@ -78,8 +80,7 @@ static const char * blacklisted_env_vars[] = {
 	"SERVER_NAME",
 	"SERVER_PORT",
 	"SERVER_PROTOCOL",
-	"SERVER_SOFTWARE",
-	NULL,
+	"SERVER_SOFTWARE"
 };
 
 static int stderr_to_fastcgi = 0;
@@ -449,15 +450,15 @@ err:
 
 static int blacklisted_env(const char *var_name, const char *var_name_end)
 {
-	const char **p;
+	size_t i;
 
 	if (var_name_end - var_name > 4 && !strncmp(var_name, "HTTP", 4)) {
 		/* HTTP_*, HTTPS */
 		return 1;
 	}
 
-	for (p = blacklisted_env_vars; *p; p++) {
-		if (!strcmp(var_name, *p)) {
+	for (i = 0; i < LENGTH(blacklisted_env_vars); i++) {
+		if (!strcmp(var_name, blacklisted_env_vars[i])) {
 			return 1;
 		}
 	}
