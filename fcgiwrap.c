@@ -85,7 +85,7 @@ static const char * const blacklisted_env_vars[] = {
 	"SERVER_SOFTWARE"
 };
 
-static int stderr_to_fastcgi = 0;
+static bool stderr_to_fastcgi = false;
 
 
 #define FCGI_BUF_SIZE 4096
@@ -492,7 +492,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 		goto err;
 	}
 
-	while(1) {
+	while(true) {
 		switch(check_file_perms(buf)) {
 			case -EACCES:
 				goto err;
@@ -708,7 +708,7 @@ static void sigchld_handler(int dummy)
 
 static void prefork(int nchildren)
 {
-	int startup = 1;
+	bool startup = true;
 
 	if (nchildren == 1) {
 		return;
@@ -716,7 +716,7 @@ static void prefork(int nchildren)
 
 	(void)signal(SIGCHLD, sigchld_handler);
 
-	while (1) {
+	while (true) {
 		while (nrunning < nchildren) {
 			pid_t pid = fork();
 			if (pid == 0) {
@@ -733,7 +733,7 @@ static void prefork(int nchildren)
 				}
 			}
 		}
-		startup = 0;
+		startup = false;
 		(void)pause();
 	}
 }
@@ -859,7 +859,7 @@ int main(int argc, char **argv)
 	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
 		switch (c) {
 			case 'f':
-				stderr_to_fastcgi++;
+				stderr_to_fastcgi = true;
 				break;
 			case 'h':
 				(void)printf("Usage: %s [OPTION]\nInvokes CGI scripts as FCGI.\n\n"
