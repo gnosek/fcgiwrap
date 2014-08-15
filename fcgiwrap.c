@@ -605,14 +605,29 @@ err_pipein:
 	FCGI_puts("System error");
 }
 
+static volatile sig_atomic_t sigint_received ;
+static void sigint_handler(int __attribute__((__unused__))dummy)
+{
+	sigint_received = 1;
+	FCGX_ShutdownPending(); // Or we could send SIGUSR1
+}
+
 static void fcgiwrap_main(void)
 {
+	struct sigaction a;
 	signal(SIGCHLD, SIG_IGN);
 	signal(SIGPIPE, SIG_IGN);
 
+	// Use sigaction for SIGINT so we can avoid SA_RESTART and actually react
+	a.sa_handler = sigint_handler;
+	a.sa_flags = 0;
+	sigemptyset( &a.sa_mask );
+	sigaction( SIGINT, &a, NULL );
+	sigaction( SIGQUIT, &a, NULL );
+
 	inherited_environ = environ;
 
-	while (FCGI_Accept() >= 0) {
+	while (FCGI_Accept() >= 0 && !sigint_received) {
 		handle_fcgi_request();
 	}
 }
@@ -689,7 +704,7 @@ static int listen_on_fd(int fd) {
 	return 0;
 }
 
-static int setup_socket(char *url) {
+static int setup_socket(char *url, int *fd_out) {
 	char *p = url;
 	char *q;
 	int fd;
@@ -769,6 +784,7 @@ invalid_url:
 		return -1;
 	}
 
+	*fd_out = fd;
 	return listen_on_fd(fd);
 }
 
@@ -776,6 +792,7 @@ int main(int argc, char **argv)
 {
 	int nchildren = 1;
 	char *socket_url = NULL;
+	int fd = 0;
 	int c;
 
 	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
@@ -833,7 +850,7 @@ int main(int argc, char **argv)
 	} else
 #endif
 	if (socket_url) {
-		if (setup_socket(socket_url) < 0) {
+		if (setup_socket(socket_url, &fd) < 0) {
 			return 1;
 		}
 		free(socket_url);
@@ -841,5 +858,15 @@ int main(int argc, char **argv)
 
 	prefork(nchildren);
 	fcgiwrap_main();
+
+	if(fd) {
+		const char *p = socket_url;
+		close(fd);
+
+		if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+			p += sizeof("unix:") - 1;
+			unlink(p);
+		}
+	}
 	return 0;
 }
