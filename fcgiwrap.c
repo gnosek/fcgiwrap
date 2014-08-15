@@ -623,7 +623,7 @@ static void fcgiwrap_main(void)
 	a.sa_flags = 0;
 	sigemptyset( &a.sa_mask );
 	sigaction( SIGINT, &a, NULL );
-	sigaction( SIGQUIT, &a, NULL );
+	sigaction( SIGTERM, &a, NULL );
 
 	inherited_environ = environ;
 
