@@ -853,7 +853,6 @@ int main(int argc, char **argv)
 		if (setup_socket(socket_url, &fd) < 0) {
 			return 1;
 		}
-		free(socket_url);
 	}
 
 	prefork(nchildren);
@@ -863,9 +862,12 @@ int main(int argc, char **argv)
 		const char *p = socket_url;
 		close(fd);
 
-		if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
-			p += sizeof("unix:") - 1;
-			unlink(p);
+		if(socket_url) {
+			if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+				p += sizeof("unix:") - 1;
+				unlink(p);
+			}
+			free(socket_url);
 		}
 	}
 	return 0;
