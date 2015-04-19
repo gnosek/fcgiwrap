@@ -521,6 +521,7 @@ static void handle_fcgi_request(void)
 	int pipe_err[2];
 	char *filename;
 	char *last_slash;
+	char *p;
 	pid_t pid;
 
 	struct fcgi_context fc;
@@ -559,15 +560,22 @@ static void handle_fcgi_request(void)
 			if (!is_allowed_program(filename))
 				cgi_error("403 Forbidden", "The given script is not allowed to execute", filename);
 
-			last_slash = strrchr(filename, '/');
-			if (!last_slash)
-				cgi_error("403 Forbidden", "Script name must be a fully qualified path", filename);
+			p = getenv("FCGI_CHDIR");
+			if (p == NULL) {
+				last_slash = strrchr(filename, '/');
+				if (!last_slash)
+					cgi_error("403 Forbidden", "Script name must be a fully qualified path", filename);
 
-			*last_slash = 0;
-			if (chdir(filename) < 0)
-				cgi_error("403 Forbidden", "Cannot chdir to script directory", filename);
+				*last_slash = 0;
+				if (chdir(filename) < 0)
+					cgi_error("403 Forbidden", "Cannot chdir to script directory", filename);
 
-			*last_slash = '/';
+				*last_slash = '/';
+			} else if (strcmp(p, "-") != 0) {
+				if (chdir(p) < 0) {
+					cgi_error("403 Forbidden", "Cannot chdir to FCGI_CHDIR directory", p);
+				}
+			}
 
 			execl(filename, filename, (void *)NULL);
 			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
