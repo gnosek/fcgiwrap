@@ -862,16 +862,15 @@ int main(int argc, char **argv)
 	prefork(nchildren);
 	fcgiwrap_main();
 
-	if(fd) {
+	if (fd) {
 		const char *p = socket_url;
 		close(fd);
 
-		if(socket_url) {
+		if (socket_url) {
 			if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
 				p += sizeof("unix:") - 1;
 				unlink(p);
 			}
-			free(socket_url);
 		}
 	}
 	return 0;
