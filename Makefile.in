@@ -4,7 +4,7 @@ datarootdir =
 
 .PHONY:	clean distclean
 
-all: fcgiwrap
+all: fcgiwrap systemd/fcgiwrap@.socket systemd/fcgiwrap@.service
 install: all
 	install -d -m 755 $(targetdir)
 	install -m 755 fcgiwrap $(targetdir)
@@ -12,8 +12,8 @@ install: all
 	install -m 644 fcgiwrap.8 $(man8dir)
 ifneq ("@systemdsystemunitdir@", "")
 	install -d -m 755 $(DESTDIR)@systemdsystemunitdir@
-	install -m 644 systemd/fcgiwrap.socket $(DESTDIR)@systemdsystemunitdir@
-	install -m 644 systemd/fcgiwrap.service $(DESTDIR)@systemdsystemunitdir@
+	install -m 644 systemd/fcgiwrap@.socket $(DESTDIR)@systemdsystemunitdir@
+	install -m 644 systemd/fcgiwrap@.service $(DESTDIR)@systemdsystemunitdir@
 endif
 
 LDLIBS = -lfcgi @systemd_LIBS@
@@ -21,9 +21,16 @@ CFLAGS = @AM_CFLAGS@
 
 fcgiwrap: fcgiwrap.c
 
+systemd/fcgiwrap@.socket: systemd/fcgiwrap@.socket.in
+	$(SED) -e 's,[@]sbindir[@],@sbindir@,g' < $< > $@
+
+systemd/fcgiwrap@.service: systemd/fcgiwrap@.service.in
+	$(SED) -e 's,[@]sbindir[@],@sbindir@,g' < $< > $@
+
 #>+ 21
 clean:
 	-rm -f fcgiwrap
+	-rm -f systemd/fcgiwrap@.socket systemd/fcgiwrap@.service
 
 #>+ 21
 distclean: clean
