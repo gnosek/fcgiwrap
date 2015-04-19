@@ -704,7 +704,7 @@ static int listen_on_fd(int fd) {
 	return 0;
 }
 
-static int setup_socket(char *url, int *fd_out) {
+static int setup_socket(char *url) {
 	char *p = url;
 	char *q;
 	int fd;
@@ -784,8 +784,11 @@ invalid_url:
 		return -1;
 	}
 
-	*fd_out = fd;
-	return listen_on_fd(fd);
+	if (listen_on_fd(fd) < 0) {
+		return -1;
+	}
+
+	return fd;
 }
 
 int main(int argc, char **argv)
@@ -850,7 +853,8 @@ int main(int argc, char **argv)
 	} else
 #endif
 	if (socket_url) {
-		if (setup_socket(socket_url, &fd) < 0) {
+		fd = setup_socket(socket_url);
+		if (fd < 0) {
 			return 1;
 		}
 	}
