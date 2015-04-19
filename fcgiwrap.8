@@ -65,6 +65,12 @@ actual executable
 SCRIPT_FILENAME
 .RS
 complete path to CGI script. When set, overrides DOCUMENT_ROOT and SCRIPT_NAME
+.RE
+FCGI_CHDIR
+.RS
+By default fcgiwrap changes to the directory containing the CGI script before executing it (per CGI spec).
+You may override this behaviour by passing FCGI_CHDIR containing the script's expected working directory
+or \- to skip the directory change completely.
 
 .SH EXAMPLE
 The fastest way to see \fBfcgiwrap\fP do something is to launch it at the command line
