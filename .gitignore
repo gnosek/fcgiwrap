@@ -1,4 +1,5 @@
 *.cache
+aclocal.m4
 config.h
 config.h.in
 config.log
