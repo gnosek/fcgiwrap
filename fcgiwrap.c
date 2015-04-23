@@ -389,13 +389,13 @@ static char *get_cgi_filename(void) /* and fixup environment */
 	int rf_len;
 	char *pathinfo = NULL;
 
-	if ((p = getenv("SCRIPT_FILENAME"))) {
+	if ((p = getenv("SCRIPT_FILENAME")) && strlen(p) > 0) {
 		if (check_file_perms(p) != 0)
 			goto err;
 		return strdup(p);
 	}
 
-	if ((p = getenv("DOCUMENT_ROOT"))) {
+	if ((p = getenv("DOCUMENT_ROOT")) && strlen(p) > 0) {
 		docroot = p;
 		docrootlen = strlen(p);
 		buflen += docrootlen;
@@ -403,7 +403,7 @@ static char *get_cgi_filename(void) /* and fixup environment */
 		goto err;
 	}
 
-	if ((p = getenv("SCRIPT_NAME"))) {
+	if ((p = getenv("SCRIPT_NAME")) && strlen(p) > 0) {
 		buflen += strlen(p);
 		scriptname = p;
 	} else {
