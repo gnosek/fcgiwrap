@@ -6,6 +6,7 @@ fcgiwrap
 :Author:	Grzegorz Nosek <root@localdomain.pl>
 :Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
                 Jordi Mallach <jordi@debian.org>
+                Justin Zhang <schnell18@gmail.com>
 
 
 This page has been translated into `Spanish <http://www.webhostinghub.com/support/es/misc/fcgiwrap>`_ language by Maria Ramos from `Webhostinghub.com/support/edu <http://www.webhostinghub.com/support/edu>`_.
@@ -22,9 +23,11 @@ Features
  - handles environment in a sane way (CGI scripts get HTTP-related env. vars from FastCGI parameters and inherit all the others from ``fcgiwrap``'s environment)
  - no configuration, so you can run several sites off the same ``fcgiwrap`` pool
  - passes CGI stderr output to ``fcgiwrap``'s stderr or FastCGI stderr stream
+ - support systemd socket activation, launcher program like spawn-fcgi
+   is no longer required on systemd-enabled distributions
 
-Installation
-============
+Install from source
+===================
 
 requirements
 ------------
@@ -48,9 +51,62 @@ To install::
 *fcgiwrap* will be copied to ``/usr/local/sbin/fcgiwrap`` if you did not set
 ``--prefix`` for configure or ``DESTDIR`` for the makefile.
 
-usage
------
-Most probably you will want ``fcgiwrap`` be launched by `www-servers/spawn-fcgi <http://redmine.lighttpd.net/projects/spawn-fcgi>`_. Or you could use the author's Perl launcher - see the homepage for that.
+Install from RPM package
+========================
+
+requirements
+------------
+At the time of writing, the *fcgiwrap* RPM is not included in any public
+repository. As a result, You have to build the RPM from scratch by following
+the procedure below:
+
+build the RPM package
+---------------------
+Install required dependencies RPM build tools::
+
+    sudo yum install -y autoconf automake fcgi-devel pkgconfig rpm-build
+
+On systemd enabled OS, you need additional ``systemd-devel`` pacakge::
+
+    sudo yum install -y systemd-devel
+ 
+Then you download appropriate version of the fcgiwrap source tarball from
+Github or clone this repository and build the source tarball by using this
+command::
+
+    git archive --format tgz --prefix fcgiwrap-1.1.0/ HEAD > fcgiwrap-1.1.0.tgz
+
+Then you can kick off the RPM build by running::
+
+    rpmbuild -ta fcgiwrap-1.1.0.tgz
+
+and locate the result .rpm file at ~/rpmbuild/RPMS.
+
+install the RPM package
+-----------------------
+The RPM package of *fcgiwrap* include the excutable ``/usr/sbin/fcgiwrap``
+and manual page. If you build the RPM package on systemd enabled OS, the
+systemd unit files are included in this package as well. To install the
+package, run command like below::
+
+    sudo rpm -Uhv fcgiwrap-1.1.0-1.fc18.armv6hl.rpm
+
+The exact name of the RPM package file depends on the OS and hardware
+architecture where you build the RPM.
+
+Usage
+=====
+If you are on traditional SysV init systems, most probably you will want
+``fcgiwrap`` be launched by `www-servers/spawn-fcgi
+<http://redmine.lighttpd.net/projects/spawn-fcgi>`_. Or you could use
+the author's Perl launcher - see the homepage for that. On the systemd
+enabled distributions like Fedora 14+, RHEL 7+, you can take advantage
+of systemd socket activation feature instead of the extra launcher like
+spawn-fcgi. The systemd unit files ``fcgiwrap.socket`` and
+``fcgiwrap.service`` is included in the tarball release under
+``systemd`` directory. You can also build the RPM package by following
+the instructions aforementioned. The RPM package installs and enables
+the socket activation for fcgiwrap automatically on systemd enabled OS.
 
 There are two modes of ``fcgiwrap`` operation:
  - when *SCRIPT_FILENAME* is set, its value is treated as the script name and executed directly.
