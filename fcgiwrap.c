@@ -578,6 +578,7 @@ static void handle_fcgi_request(void)
 			}
 
 			execl(filename, filename, (void *)NULL);
+			fprintf(stderr, "Error: %s\n", strerror(errno));
 			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
 
 		default: /* parent */
