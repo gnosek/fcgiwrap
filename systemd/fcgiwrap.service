@@ -3,7 +3,7 @@ Description=Simple CGI Server
 After=nss-user-lookup.target
 
 [Service]
-ExecStart=/usr/sbin/fcgiwrap
+ExecStart=/usr/local/sbin/fcgiwrap
 User=http
 Group=http
 
