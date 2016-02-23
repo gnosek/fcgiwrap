@@ -41,6 +41,8 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -83,9 +85,11 @@ static const char * blacklisted_env_vars[] = {
 };
 
 static int stderr_to_fastcgi = 0;
+static int use_suexec = 0;
 
 
 #define FCGI_BUF_SIZE 4096
+#define MIN_ID_ALLOWED 1000
 
 static int write_all(int fd, char *buf, size_t size)
 {
@@ -380,6 +384,119 @@ static int check_file_perms(const char *path)
 	}
 }
 
+static int check_suexec(const char* const cgi_filename, struct stat *ls)
+{
+	struct stat pls;
+	struct passwd *user;
+	struct group *group;
+	char* p;
+	char* parent = NULL;
+	size_t len_docroot, len_filename, len_parent, len_userdir;
+
+	/* Can stat the target cgi program */
+	if (lstat(cgi_filename, ls) < 0) {
+		return -EACCES;
+	} else if (!S_ISREG(ls->st_mode) && S_ISLNK(ls->st_mode)) {
+		if (stat(cgi_filename, ls) < 0) {
+			return -EACCES;
+		}
+	}
+
+	/* Is the target cgi program not writable by anyone else */
+	/* Is the target cgi program NOT setuid or setgid */
+	if ((ls->st_mode & S_IWGRP) ||
+		(ls->st_mode & S_IWOTH) ||
+		(ls->st_mode & S_ISUID) ||
+		(ls->st_mode & S_ISGID)) {
+		return -EACCES;
+	}
+
+	/* Is the target userid or groupid a superuser */
+	if (ls->st_uid == 0 || ls->st_gid == 0) {
+		return -EACCES;
+	}
+
+	/* Is the target user name valid */
+	user = getpwuid(ls->st_uid);
+	if (user == NULL) {
+		return -EACCES;
+	}
+
+	/* Is the target group name valid */
+	group = getgrgid(ls->st_gid);
+	if (group == NULL) {
+		return -EACCES;
+	}
+
+	/* Is the target user/group the same as the owner */
+	if (group->gr_gid != user->pw_gid) {
+		return -EACCES;
+	}
+
+	/* Is the target groupid or userid above the minimum ID number */
+	if (group->gr_gid < MIN_ID_ALLOWED || user->pw_uid < MIN_ID_ALLOWED) {
+		return -EACCES;
+	}
+
+	/* Is the directory within document root */
+	if ((p = getenv("DOCUMENT_ROOT"))) {
+		len_docroot = strlen(p);
+		len_filename = strlen(cgi_filename);
+		len_userdir = strlen(user->pw_dir);
+
+		if (len_docroot > len_filename) {
+			return -EACCES;
+		} else if (strncmp(p, cgi_filename, len_docroot) != 0) {
+			return -EACCES;
+		} else if (len_userdir > len_filename) { /* Is the target directory within the user's directory */
+			return -EACCES;
+		} else if (strncmp(user->pw_dir, cgi_filename, len_userdir) != 0) {
+			return -EACCES;
+		}
+	} else {
+		/* DOCUMENT_ROOT must be set to use suexec */
+		return -EACCES;
+	}
+
+	p = strrchr(cgi_filename, '/');
+
+	if (!p) {
+		return -EACCES;
+	}
+
+	len_parent = p - cgi_filename;
+
+	parent = malloc(len_parent);
+	if (!parent) {
+		return -EACCES;
+	}
+
+	strncpy(parent, cgi_filename, len_parent);
+
+	if (lstat(parent, &pls) < 0) {
+		goto err_parent;
+	} else if (!S_ISDIR(pls.st_mode) && S_ISLNK(pls.st_mode)) {
+		if (stat(parent, &pls) < 0) {
+			goto err_parent;
+		} else if (!S_ISDIR(pls.st_mode)) {
+			goto err_parent;
+		}
+	}
+	free(parent);
+	/* Make sure directory is not writable by anyone else */
+	if ((pls.st_mode & S_IWGRP) || (pls.st_mode & S_IWOTH)) {
+		return -EACCES;
+	}
+	if (pls.st_gid != ls->st_gid || pls.st_uid != ls->st_uid) {
+		return -EACCES;
+	}
+
+	return 0;
+err_parent:
+	free(parent);
+	return -EACCES;
+}
+
 static char *get_cgi_filename(void) /* and fixup environment */
 {
 	int buflen = 1, docrootlen;
@@ -523,6 +640,7 @@ static void handle_fcgi_request(void)
 	char *last_slash;
 	char *p;
 	pid_t pid;
+	struct stat ls;
 
 	struct fcgi_context fc;
 
@@ -574,6 +692,18 @@ static void handle_fcgi_request(void)
 			} else if (strcmp(p, "-") != 0) {
 				if (chdir(p) < 0) {
 					cgi_error("403 Forbidden", "Cannot chdir to FCGI_CHDIR directory", p);
+				}
+			}
+
+			if (use_suexec) {
+				if (check_suexec(filename, &ls) < 0) {
+					cgi_error("403 Forbidden", "Cannot suexec script because the permissions are incorrect", filename);
+				}
+				if (setgid(ls.st_gid) < 0) {
+					cgi_error("403 Forbidden", "Cannot change to script group owner", filename);
+				}
+				if (setuid(ls.st_uid) < 0) {
+					cgi_error("403 Forbidden", "Cannot change to script user owner", filename);
 				}
 			}
 
@@ -731,7 +861,7 @@ static int setup_socket(char *url) {
 
 		if (strlen(p) >= UNIX_PATH_MAX) {
 			fprintf(stderr, "Socket path too long, exceeds %d characters\n",
-			        UNIX_PATH_MAX);
+					UNIX_PATH_MAX);
 			return -1;
 		}
 
@@ -776,9 +906,9 @@ static int setup_socket(char *url) {
 	} else {
 invalid_url:
 		fprintf(stderr, "Valid socket URLs are:\n"
-		                "unix:/path/to/socket for Unix sockets\n"
-		                "tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
-		                "tcp6:[ipv6_addr]:port for IPv6 sockets\n");
+						"unix:/path/to/socket for Unix sockets\n"
+						"tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
+						"tcp6:[ipv6_addr]:port for IPv6 sockets\n");
 		return -1;
 	}
 
@@ -803,10 +933,11 @@ int main(int argc, char **argv)
 {
 	int nchildren = 1;
 	char *socket_url = NULL;
+	int i_am_root = (getuid() == 0);
 	int fd = 0;
 	int c;
 
-	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
+	while ((c = getopt(argc, argv, "c:hufs:p:")) != -1) {
 		switch (c) {
 			case 'f':
 				stderr_to_fastcgi++;
@@ -817,6 +948,7 @@ int main(int argc, char **argv)
 					"Options are:\n"
 					"  -f\t\t\tSend CGI's stderr over FastCGI\n"
 					"  -c <number>\t\tNumber of processes to prefork\n"
+					"  -u <use_suexec>\tUse suexec like behavior. Change to owner uid and gid before executing. (See https://httpd.apache.org/docs/2.4/suexec.html)\n"
 					"  -s <socket_url>\tSocket to bind to (say -s help for help)\n"
 					"  -h\t\t\tShow this help message and exit\n"
 					"  -p <path>\t\tRestrict execution to this script. (repeated options will be merged)\n"
@@ -825,6 +957,13 @@ int main(int argc, char **argv)
 					argv[0]
 				);
 				return 0;
+			case 'u':
+				if (!i_am_root) {
+					fprintf(stderr, "Option -%c requires program to be run as superuser.\n", optopt);
+					return 1;
+				}
+				use_suexec = 1;
+				break;
 			case 'c':
 				nchildren = atoi(optarg);
 				break;
