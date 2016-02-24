@@ -452,6 +452,8 @@ static int check_suexec(const char* const cgi_filename, struct stat *ls)
 			return -EACCES;
 		} else if (strncmp(user->pw_dir, cgi_filename, len_userdir) != 0) {
 			return -EACCES;
+		} else if (strstr(cgi_filename, "..") != NULL) { /* Unsafe hierarchical reference */
+			return -EACCES;
 		}
 	} else {
 		/* DOCUMENT_ROOT must be set to use suexec */
