@@ -3,7 +3,8 @@ fcgiwrap-suexec
 ========
 :Info:		Simple FastCGI wrapper for CGI scripts that can use suexec like behavior
 :Homepage:	http://nginx.localdomain.pl/wiki/FcgiWrap
-:Author:	Grzegorz Nosek <root@localdomain.pl>
+:Original Author:	Grzegorz Nosek <root@localdomain.pl>
+:Author: Mike Lodder <mikelodder7@yahoo.com>
 :Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
                 Jordi Mallach <jordi@debian.org>
 
