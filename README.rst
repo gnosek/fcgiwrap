@@ -1,7 +1,7 @@
 ========
-fcgiwrap
+fcgiwrap-suexec
 ========
-:Info:		Simple FastCGI wrapper for CGI scripts
+:Info:		Simple FastCGI wrapper for CGI scripts that can use suexec like behavior
 :Homepage:	http://nginx.localdomain.pl/wiki/FcgiWrap
 :Author:	Grzegorz Nosek <root@localdomain.pl>
 :Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
@@ -55,3 +55,5 @@ Most probably you will want ``fcgiwrap`` be launched by `www-servers/spawn-fcgi 
 There are two modes of ``fcgiwrap`` operation:
  - when *SCRIPT_FILENAME* is set, its value is treated as the script name and executed directly.
  - otherwise, *DOCUMENT_ROOT* and *SCRIPT_NAME* are concatenated and split back again into the script name and *PATH_INFO*. For example, given a *DOCUMENT_ROOT* of ``/www/cgi`` and *SCRIPT_NAME* of ``/subdir/example.cgi/foobar``, ``fcgiwrap`` will execute ``/www/cgi/subdir/example.cgi`` with *PATH_INFO* of ``/foobar`` (assuming ``example.cgi`` exists and is executable).
+ 
+ Use the ``-u`` flag to enable suexec behavior similar to http://httpd.apache.org/docs/current/suexec.html
