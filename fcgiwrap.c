@@ -84,8 +84,13 @@ static const char * blacklisted_env_vars[] = {
 
 static int stderr_to_fastcgi = 0;
 
-
+#define TIMEOUT_MAX 3600	/* an hour timeout */
 #define FCGI_BUF_SIZE 4096
+
+/* timeout related data */
+static int term_signal = SIGTERM;  /* same default as kill command.  */
+static int monitored_pid;
+static int timeout;
 
 static int write_all(int fd, char *buf, size_t size)
 {
@@ -514,6 +519,42 @@ static void cgi_error(const char *message, const char *reason, const char *filen
 	_exit(99);
 }
 
+static void unblock_signal (int sig)
+{
+  sigset_t unblock_set;
+  sigemptyset (&unblock_set);
+  sigaddset (&unblock_set, sig);
+  sigprocmask (SIG_UNBLOCK, &unblock_set, NULL);
+}
+
+/* Start the timeout after which we'll receive a SIGALRM.
+   '0' means don't timeout.  */
+static void settimeout (int duration)
+{
+	/* We configure timers below so that SIGALRM is sent on expiry.
+	Therefore ensure we don't inherit a mask blocking SIGALRM.  */
+	unblock_signal (SIGALRM);
+
+	if (TIMEOUT_MAX <= duration)
+		timeout = TIMEOUT_MAX;
+	else
+ 		timeout = duration;
+
+	alarm(timeout);
+}
+
+static void cleanup (int sig)
+{
+	if (sig == SIGALRM)
+	{
+    	sig = term_signal;
+    	if (monitored_pid) {
+    		/* Send the signal directly to the monitored child */
+			kill (monitored_pid, sig);
+		}
+	}
+}
+
 static void handle_fcgi_request(void)
 {
 	int pipe_in[2];
@@ -529,6 +570,8 @@ static void handle_fcgi_request(void)
 	if (pipe(pipe_in) < 0) goto err_pipein;
 	if (pipe(pipe_out) < 0) goto err_pipeout;
 	if (pipe(pipe_err) < 0) goto err_pipeerr;
+
+	monitored_pid = 0;
 
 	switch((pid = fork())) {
 		case -1:
@@ -551,6 +594,7 @@ static void handle_fcgi_request(void)
 
 			signal(SIGCHLD, SIG_DFL);
 			signal(SIGPIPE, SIG_DFL);
+			signal(SIGALRM, SIG_DFL);
 
 			filename = get_cgi_filename();
 			inherit_environment();
@@ -591,6 +635,10 @@ static void handle_fcgi_request(void)
 			fc.reply_state = REPLY_STATE_INIT;
 			fc.cgi_pid = pid;
 
+			if (timeout>0) {
+				monitored_pid = pid;
+      			settimeout (timeout);
+			}
 			fcgi_pass(&fc);
 	}
 	return;
@@ -626,12 +674,22 @@ static void fcgiwrap_main(void)
 	signal(SIGCHLD, SIG_IGN);
 	signal(SIGPIPE, SIG_IGN);
 
+	sigint_received = 0;
+
 	// Use sigaction for SIGINT so we can avoid SA_RESTART and actually react
 	a.sa_handler = sigint_handler;
 	a.sa_flags = 0;
+
 	sigemptyset( &a.sa_mask );
 	sigaction( SIGINT, &a, NULL );
 	sigaction( SIGTERM, &a, NULL );
+
+	struct sigaction sa;
+  	sigemptyset (&sa.sa_mask);  /* Allow concurrent calls to handler */
+  	sa.sa_handler = cleanup;
+  	sa.sa_flags = SA_RESTART;   /* Restart syscalls if possible, as that's
+                                   more likely to work cleanly.  */
+  	sigaction (SIGALRM, &sa, NULL); /* our timeout.  */
 
 	inherited_environ = environ;
 
@@ -805,8 +863,9 @@ int main(int argc, char **argv)
 	char *socket_url = NULL;
 	int fd = 0;
 	int c;
+	timeout = 0;
 
-	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
+	while ((c = getopt(argc, argv, "c:t:hfs:p:")) != -1) {
 		switch (c) {
 			case 'f':
 				stderr_to_fastcgi++;
@@ -817,6 +876,7 @@ int main(int argc, char **argv)
 					"Options are:\n"
 					"  -f\t\t\tSend CGI's stderr over FastCGI\n"
 					"  -c <number>\t\tNumber of processes to prefork\n"
+					"  -t <number>\t\tNumber of seconds after those CGI process would be killed\n"
 					"  -s <socket_url>\tSocket to bind to (say -s help for help)\n"
 					"  -h\t\t\tShow this help message and exit\n"
 					"  -p <path>\t\tRestrict execution to this script. (repeated options will be merged)\n"
@@ -827,6 +887,9 @@ int main(int argc, char **argv)
 				return 0;
 			case 'c':
 				nchildren = atoi(optarg);
+				break;
+			case 't':
+				timeout = atoi(optarg);
 				break;
 			case 's':
 				socket_url = strdup(optarg);
