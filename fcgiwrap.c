@@ -533,7 +533,7 @@ static void unblock_signal (int sig)
 static void settimeout (int duration)
 {
   	/* We configure timers below so that SIGALRM is sent on expiry.
-     Therefore ensure we don't inherit a mask blocking SIGALRM.  */
+    Therefore ensure we don't inherit a mask blocking SIGALRM.  */
   	unblock_signal (SIGALRM);
 
   	if (TIMEOUT_MAX <= duration)
@@ -548,20 +548,14 @@ static void cleanup (int sig)
 {
 	if (sig == SIGALRM)
     {
-    	timed_out = 1;
       	sig = term_signal;
+	  	if (monitored_pid)
+    	{
+    		/* Send the signal directly to the monitored child */
+    		kill (monitored_pid, sig);
+    	}
     }
-  	if (monitored_pid)
-    {
-    	/* Send the signal directly to the monitored child */
-    	kill (monitored_pid, sig);
-		//FCGI_puts("Status: 504 Gateway Timeout\nContent-type: text/plain\n");
-		//FCGI_puts("CGI script execution timeout");
-    }
-  	else /* we're the child or the child is not exec'd yet.  */
-    	_exit (128 + sig);
 }
-
 
 static void handle_fcgi_request(void)
 {
@@ -578,6 +572,8 @@ static void handle_fcgi_request(void)
 	if (pipe(pipe_in) < 0) goto err_pipein;
 	if (pipe(pipe_out) < 0) goto err_pipeout;
 	if (pipe(pipe_err) < 0) goto err_pipeerr;
+
+	monitored_pid = 0;
 
 	switch((pid = fork())) {
 		case -1:
