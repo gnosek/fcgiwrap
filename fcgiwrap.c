@@ -88,7 +88,6 @@ static int stderr_to_fastcgi = 0;
 #define FCGI_BUF_SIZE 4096
 
 /* timeout related data */
-static int timed_out;
 static int term_signal = SIGTERM;  /* same default as kill command.  */
 static int monitored_pid;
 static int timeout;
