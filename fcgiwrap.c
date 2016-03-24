@@ -531,29 +531,28 @@ static void unblock_signal (int sig)
    '0' means don't timeout.  */
 static void settimeout (int duration)
 {
-  	/* We configure timers below so that SIGALRM is sent on expiry.
-    Therefore ensure we don't inherit a mask blocking SIGALRM.  */
-  	unblock_signal (SIGALRM);
+	/* We configure timers below so that SIGALRM is sent on expiry.
+	Therefore ensure we don't inherit a mask blocking SIGALRM.  */
+	unblock_signal (SIGALRM);
 
-  	if (TIMEOUT_MAX <= duration)
-    	timeout = TIMEOUT_MAX;
-  	else {
-  		timeout = duration;
-  	}
-	alarm (timeout);
+	if (TIMEOUT_MAX <= duration)
+		timeout = TIMEOUT_MAX;
+	else
+ 		timeout = duration;
+
+	alarm(timeout);
 }
 
 static void cleanup (int sig)
 {
 	if (sig == SIGALRM)
-    {
-      	sig = term_signal;
-	  	if (monitored_pid)
-    	{
+	{
+    	sig = term_signal;
+    	if (monitored_pid) {
     		/* Send the signal directly to the monitored child */
-    		kill (monitored_pid, sig);
-    	}
-    }
+			kill (monitored_pid, sig);
+		}
+	}
 }
 
 static void handle_fcgi_request(void)
