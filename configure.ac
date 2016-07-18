@@ -28,7 +28,7 @@ AC_ARG_WITH([systemd],
   [], [with_systemd=check])
 have_systemd=no
 if test "x$with_systemd" != "xno"; then
-  PKG_CHECK_MODULES(systemd, [libsystemd-daemon],
+  PKG_CHECK_MODULES(systemd, [libsystemd],
     [AC_DEFINE(HAVE_SYSTEMD, 1, [Define if systemd is available])
     have_systemd=yes],
   have_systemd=no)
