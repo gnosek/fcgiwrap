@@ -3,6 +3,8 @@ Description=fcgiwrap Socket
 
 [Socket]
 ListenStream=/run/fcgiwrap.sock
+SocketUser=http
+SocketMode=0660
 
 [Install]
 WantedBy=sockets.target
