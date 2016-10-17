@@ -1,9 +1,10 @@
 ========
-fcgiwrap
+fcgiwrap-suexec
 ========
-:Info:		Simple FastCGI wrapper for CGI scripts
+:Info:		Simple FastCGI wrapper for CGI scripts that can use suexec like behavior
 :Homepage:	http://nginx.localdomain.pl/wiki/FcgiWrap
-:Author:	Grzegorz Nosek <root@localdomain.pl>
+:Original Author:	Grzegorz Nosek <root@localdomain.pl>
+:Author: Mike Lodder <mikelodder7@yahoo.com>
 :Contributors:	W-Mark Kubacki <wmark@hurrikane.de>
                 Jordi Mallach <jordi@debian.org>
 
@@ -55,3 +56,13 @@ Most probably you will want ``fcgiwrap`` be launched by `www-servers/spawn-fcgi 
 There are two modes of ``fcgiwrap`` operation:
  - when *SCRIPT_FILENAME* is set, its value is treated as the script name and executed directly.
  - otherwise, *DOCUMENT_ROOT* and *SCRIPT_NAME* are concatenated and split back again into the script name and *PATH_INFO*. For example, given a *DOCUMENT_ROOT* of ``/www/cgi`` and *SCRIPT_NAME* of ``/subdir/example.cgi/foobar``, ``fcgiwrap`` will execute ``/www/cgi/subdir/example.cgi`` with *PATH_INFO* of ``/foobar`` (assuming ``example.cgi`` exists and is executable).
+ 
+Use the ``-u`` flag to enable suexec behavior similar to http://httpd.apache.org/docs/current/suexec.html
+
+When using the ``-u`` flag, spawn-fcgi will probably not allow you to run fcgiwrap as root which is a requirement for suexec.
+In this case you can run it as root with the following command
+``/usr/local/sbin/fcgiwrap -f -u -c <number_of_threads> -s unix:/var/run/fcgiwrap.socket``
+
+/var/run/fcgiwrap.socket will be owned by root and only writable by root. Webserver like nginx or yaws need write permissions.
+Using ``chmod 777 /var/run/fcgiwrap.socket`` will allow them to use the socket while still running as another system user than root.
+If fcgiwrap is restarted make sure to readjust the permissions on the socket. I have found ports to not suffer from this issue.

@@ -34,6 +34,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <time.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -41,6 +42,8 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -83,9 +86,12 @@ static const char * blacklisted_env_vars[] = {
 };
 
 static int stderr_to_fastcgi = 0;
+static int use_suexec = 0;
+static FILE* suexec_log;
 
 
 #define FCGI_BUF_SIZE 4096
+#define MIN_ID_ALLOWED 1000
 
 static int write_all(int fd, char *buf, size_t size)
 {
@@ -380,6 +386,179 @@ static int check_file_perms(const char *path)
 	}
 }
 
+static void print_time_suexec_log(void)
+{
+	time_t rawtime;
+	struct tm* info;
+	char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	time(&rawtime);
+	info = localtime(&rawtime);
+	fprintf(suexec_log, "[%d/%s/%d %d:%d:%d]: ", (info->tm_year+1900), months[info->tm_mon], info->tm_mday, info->tm_hour, info->tm_min, info->tm_sec);
+}
+
+static int check_suexec(const char* const cgi_filename, struct stat *ls)
+{
+	struct stat pls;
+	struct passwd *user;
+	struct group *group;
+	char* p;
+	size_t len_docroot, len_filename, len_userdir;
+
+	/* Can stat the target cgi program */
+	if (lstat(cgi_filename, ls) < 0) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "Can't stat %s\n", cgi_filename);
+		fflush(suexec_log);
+		return -EACCES;
+	} else if (!S_ISREG(ls->st_mode) && S_ISLNK(ls->st_mode)) {
+		if (stat(cgi_filename, ls) < 0) {
+			print_time_suexec_log();
+			fprintf(suexec_log, "Can't stat %s\n", cgi_filename);
+			fflush(suexec_log);
+			return -EACCES;
+		}
+	}
+
+	/* Is the target cgi program not writable by anyone else */
+	/* Is the target cgi program NOT setuid or setgid */
+	if ((ls->st_mode & S_IWOTH) ||
+		(ls->st_mode & S_ISUID) ||
+		(ls->st_mode & S_ISGID)) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is writable by anyone or has setuid/setgid set\n", cgi_filename);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	/* Is the target userid or groupid a superuser */
+	if (ls->st_uid == 0 || ls->st_gid == 0) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is owned by root\n", cgi_filename);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	/* Is the target user name valid */
+	user = getpwuid(ls->st_uid);
+	if (user == NULL) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is owned by user id %d. %d is not a user on this system\n", cgi_filename, ls->st_uid, ls->st_uid);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	/* Is the target group name valid */
+	group = getgrgid(ls->st_gid);
+	if (group == NULL) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is owned by group id %d. %d is not a group on this system\n", cgi_filename, ls->st_gid, ls->st_gid);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	/* Is the target user/group the same as the owner */
+	if (group->gr_gid != user->pw_gid) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is owned by group id %d but expected %d\n", cgi_filename, group->gr_gid, user->pw_gid);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	/* Is the target groupid or userid above the minimum ID number */
+	if (group->gr_gid < MIN_ID_ALLOWED || user->pw_uid < MIN_ID_ALLOWED) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is owned by user id %d. The minimal group/user id allowed is %d\n", cgi_filename, ls->st_uid, MIN_ID_ALLOWED);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	/* Is the directory within document root */
+	if ((p = getenv("DOCUMENT_ROOT"))) {
+		len_docroot = strlen(p);
+		len_filename = strlen(cgi_filename);
+		len_userdir = strlen(user->pw_dir);
+
+		if (len_docroot > len_filename) {
+			print_time_suexec_log();
+			fprintf(suexec_log, "%s is not located in %s\n", cgi_filename, p);
+			fflush(suexec_log);
+			return -EACCES;
+		} else if (strncmp(p, cgi_filename, len_docroot) != 0) {
+			print_time_suexec_log();
+			fprintf(suexec_log, "%s is not located in %s\n", cgi_filename, p);
+			fflush(suexec_log);
+			return -EACCES;
+		} else if (len_userdir > len_filename) { /* Is the target directory within the user's directory */
+			print_time_suexec_log();
+			fprintf(suexec_log, "%s is not located in the user's directory\n", cgi_filename);
+			fflush(suexec_log);
+			return -EACCES;
+		} else if (strncmp(user->pw_dir, cgi_filename, len_userdir) != 0) {
+			print_time_suexec_log();
+			fprintf(suexec_log, "%s is not located in the user's directory\n", cgi_filename);
+			fflush(suexec_log);
+			return -EACCES;
+		}
+	} else {
+		/* DOCUMENT_ROOT must be set to use suexec */
+		print_time_suexec_log();
+		fprintf(suexec_log, "DOCUMENT_ROOT is not set. DOCUMENT_ROOT must be set to use suexec for %s\n", cgi_filename);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+	p = strrchr(cgi_filename, '/');
+
+	if (!p) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "Unable to / in %s\n", cgi_filename);
+		fflush(suexec_log);
+		return -EACCES;
+	}
+
+    *p = 0;
+	if (lstat(cgi_filename, &pls) < 0) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "Unable to stat %s\n", cgi_filename);
+		fflush(suexec_log);
+		goto err_parent;
+	} else if (!S_ISDIR(pls.st_mode) && S_ISLNK(pls.st_mode)) {
+		if (stat(cgi_filename, &pls) < 0) {
+			print_time_suexec_log();
+			fprintf(suexec_log, "Unable to stat %s\n", cgi_filename);
+			fflush(suexec_log);
+			goto err_parent;
+		} else if (!S_ISDIR(pls.st_mode)) {
+			print_time_suexec_log();
+			fprintf(suexec_log, "%s is not a directory\n", cgi_filename);
+			fflush(suexec_log);
+			goto err_parent;
+		}
+	}
+	/* Make sure directory is not writable by anyone else */
+	if (pls.st_mode & S_IWOTH) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "Parent directory %s is writable by anyone.", cgi_filename);
+        *p = '/';
+        fprintf(suexec_log, " Don't execute %s\n", cgi_filename);
+        *p = 0;
+		fflush(suexec_log);
+		goto err_parent;
+	}
+	if (pls.st_gid != ls->st_gid || pls.st_uid != ls->st_uid) {
+		print_time_suexec_log();
+		fprintf(suexec_log, "%s is owned by user %d group %d. Expected user owner %d group owner %d\n", cgi_filename, pls.st_uid, pls.st_gid, ls->st_uid, ls->st_gid);
+		fflush(suexec_log);
+		goto err_parent;
+	}
+    *p = '/';
+
+	return 0;
+err_parent:
+    *p = '/';
+	return -EACCES;
+}
+
 static char *get_cgi_filename(void) /* and fixup environment */
 {
 	int buflen = 1, docrootlen;
@@ -523,6 +702,9 @@ static void handle_fcgi_request(void)
 	char *last_slash;
 	char *p;
 	pid_t pid;
+	struct stat ls;
+	struct group *group;
+	struct passwd *user;
 
 	struct fcgi_context fc;
 
@@ -575,6 +757,29 @@ static void handle_fcgi_request(void)
 				if (chdir(p) < 0) {
 					cgi_error("403 Forbidden", "Cannot chdir to FCGI_CHDIR directory", p);
 				}
+			}
+
+			if (use_suexec) {
+				if (check_suexec(filename, &ls) < 0) {
+					cgi_error("403 Forbidden", "Cannot suexec script because the permissions are incorrect", filename);
+				}
+				if (setgid(ls.st_gid) < 0) {
+					print_time_suexec_log();
+					fprintf(suexec_log, "Cannot change process to script group owner %d to execute %s\n", ls.st_gid, filename);
+					fflush(suexec_log);
+					cgi_error("403 Forbidden", "Cannot change to script group owner", filename);
+				}
+				if (setuid(ls.st_uid) < 0) {
+					print_time_suexec_log();
+					fprintf(suexec_log, "Cannot change process to script user owner %d to execute %s\n", ls.st_uid, filename);
+					fflush(suexec_log);
+					cgi_error("403 Forbidden", "Cannot change to script user owner", filename);
+				}
+				print_time_suexec_log();
+				group = getgrgid(ls.st_gid);
+				user = getpwuid(ls.st_uid);
+				fprintf(suexec_log, "uid: (%d/%s) gid: (%d/%s) cmd: %s\n", ls.st_uid, user->pw_name, ls.st_gid, group->gr_name, filename);
+				fflush(suexec_log);
 			}
 
 			execl(filename, filename, (void *)NULL);
@@ -731,7 +936,7 @@ static int setup_socket(char *url) {
 
 		if (strlen(p) >= UNIX_PATH_MAX) {
 			fprintf(stderr, "Socket path too long, exceeds %d characters\n",
-			        UNIX_PATH_MAX);
+					UNIX_PATH_MAX);
 			return -1;
 		}
 
@@ -776,9 +981,9 @@ static int setup_socket(char *url) {
 	} else {
 invalid_url:
 		fprintf(stderr, "Valid socket URLs are:\n"
-		                "unix:/path/to/socket for Unix sockets\n"
-		                "tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
-		                "tcp6:[ipv6_addr]:port for IPv6 sockets\n");
+						"unix:/path/to/socket for Unix sockets\n"
+						"tcp:dot.ted.qu.ad:port for IPv4 sockets\n"
+						"tcp6:[ipv6_addr]:port for IPv6 sockets\n");
 		return -1;
 	}
 
@@ -803,10 +1008,11 @@ int main(int argc, char **argv)
 {
 	int nchildren = 1;
 	char *socket_url = NULL;
+	int i_am_root = (getuid() == 0);
 	int fd = 0;
 	int c;
 
-	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
+	while ((c = getopt(argc, argv, "c:hufs:p:")) != -1) {
 		switch (c) {
 			case 'f':
 				stderr_to_fastcgi++;
@@ -817,6 +1023,7 @@ int main(int argc, char **argv)
 					"Options are:\n"
 					"  -f\t\t\tSend CGI's stderr over FastCGI\n"
 					"  -c <number>\t\tNumber of processes to prefork\n"
+					"  -u <use_suexec>\tUse suexec like behavior. Change to owner uid and gid before executing. (See https://httpd.apache.org/docs/2.4/suexec.html)\n"
 					"  -s <socket_url>\tSocket to bind to (say -s help for help)\n"
 					"  -h\t\t\tShow this help message and exit\n"
 					"  -p <path>\t\tRestrict execution to this script. (repeated options will be merged)\n"
@@ -825,6 +1032,13 @@ int main(int argc, char **argv)
 					argv[0]
 				);
 				return 0;
+			case 'u':
+				if (!i_am_root) {
+					fprintf(stderr, "Option -%c requires program to be run as superuser.\n", optopt);
+					return 1;
+				}
+				use_suexec = 1;
+				break;
 			case 'c':
 				nchildren = atoi(optarg);
 				break;
@@ -867,6 +1081,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (use_suexec) {
+		suexec_log = fopen("/var/log/fcgiwrap_suexec.log", "ab");
+		if (suexec_log == NULL) {
+			fprintf(stderr, "An error occurred while opening /var/log/fcgiwrap_suexec.log '%s'", strerror(errno));
+			return 1;
+		}
+	}
+
 	prefork(nchildren);
 	fcgiwrap_main();
 
@@ -880,6 +1102,9 @@ int main(int argc, char **argv)
 				unlink(p);
 			}
 		}
+	}
+	if (suexec_log) {
+		fclose(suexec_log);
 	}
 	return 0;
 }
