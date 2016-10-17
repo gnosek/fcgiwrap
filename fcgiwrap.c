@@ -775,13 +775,13 @@ static void handle_fcgi_request(void)
 					fflush(suexec_log);
 					cgi_error("403 Forbidden", "Cannot change to script user owner", filename);
 				}
+				print_time_suexec_log();
+				group = getgrgid(ls.st_gid);
+				user = getpwuid(ls.st_uid);
+				fprintf(suexec_log, "uid: (%d/%s) gid: (%d/%s) cmd: %s\n", ls.st_uid, user->pw_name, ls.st_gid, group->gr_name, filename);
+				fflush(suexec_log);
 			}
 
-			print_time_suexec_log();
-			group = getgrgid(ls.st_gid);
-			user = getpwuid(ls.st_uid);
-			fprintf(suexec_log, "uid: (%d/%s) gid: (%d/%s) cmd: %s\n", ls.st_uid, user->pw_name, ls.st_gid, group->gr_name, filename);
-			fflush(suexec_log);
 			execl(filename, filename, (void *)NULL);
 			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
 
