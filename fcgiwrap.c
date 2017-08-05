@@ -500,6 +500,7 @@ static bool is_allowed_program(const char *program) {
 	return false;
 }
 
+__attribute__((__noreturn__))
 static void cgi_error(const char *message, const char *reason, const char *filename)
 {
 	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
