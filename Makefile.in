@@ -16,6 +16,7 @@ ifneq ("@systemdsystemunitdir@", "")
 	install -m 644 systemd/fcgiwrap.service $(DESTDIR)@systemdsystemunitdir@
 endif
 
+CC = @CC@
 LDLIBS = -lfcgi @systemd_LIBS@
 CFLAGS = @AM_CFLAGS@
 
