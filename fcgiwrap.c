@@ -803,7 +803,7 @@ int main(int argc, char **argv)
 {
 	int nchildren = 1;
 	char *socket_url = NULL;
-	int fd = 0;
+	int fd = -1;
 	int c;
 
 	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
@@ -865,12 +865,15 @@ int main(int argc, char **argv)
 		if (fd < 0) {
 			return 1;
 		}
+	} else {
+		fprintf(stderr, "No socket to listen on\n");
+		return 1;
 	}
 
 	prefork(nchildren);
 	fcgiwrap_main();
 
-	if (fd) {
+	if (fd >= 0) {
 		const char *p = socket_url;
 		close(fd);
 
