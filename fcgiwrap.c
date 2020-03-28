@@ -726,6 +726,8 @@ static int setup_socket(char *url) {
 		struct sockaddr_in6 sa_in6;
 	} sa;
 
+    memset(&sa, 0, sizeof(sa));
+
 	if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
 		p += sizeof("unix:") - 1;
 
