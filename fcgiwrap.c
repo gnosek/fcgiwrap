@@ -727,6 +727,8 @@ static int setup_socket(char *url) {
 	} sa;
 
 	if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+		struct stat st;
+
 		p += sizeof("unix:") - 1;
 
 		if (strlen(p) >= UNIX_PATH_MAX) {
@@ -738,6 +740,36 @@ static int setup_socket(char *url) {
 		sockaddr_size = sizeof sa.sa_un;
 		sa.sa_un.sun_family = AF_UNIX;
 		strcpy(sa.sa_un.sun_path, p);
+
+		if (stat(p, &st) != -1) {
+			/* Socket already exists. See if it is still alive. */
+			struct sockaddr_un server;
+			int fd;
+
+			memset((char *)&server, '\0',
+			    sizeof(struct sockaddr_un));
+			server.sun_family = AF_UNIX;
+			strlcpy(server.sun_path, p, sizeof(server.sun_path));
+
+			if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) != -1) {
+				if (connect(fd, (struct sockaddr *)&server,
+				    sizeof(struct sockaddr_un)) >= 0) {
+					close(fd);
+					fprintf(stderr,
+					    "Socket %s is in use by "
+					    "another process.\n", p);
+					return -1;
+				}
+				close(fd);
+			}
+
+			fprintf(stderr, "Removing stale socket %s.\n", p);
+			if (unlink(p) == -1) {
+				fprintf(stderr,
+				    "Could not unlink stale socket %s\n", p);
+				return -1;
+			}
+		}
 	} else if (!strncmp(p, "tcp:", sizeof("tcp:") - 1)) {
 		p += sizeof("tcp:") - 1;
 
