@@ -3,6 +3,7 @@
 
 AC_PREREQ(2.61)
 AC_INIT([fcgiwrap], [1.1.0], [root@localdomain.pl])
+AC_CONFIG_MACRO_DIRS([m4])
 AM_CFLAGS="-std=gnu99 -Wall -Wextra -Werror -pedantic"
 if test x"$CFLAGS" = x""; then
     AM_CFLAGS="$AM_CFLAGS -O2 -g3"
@@ -61,6 +62,8 @@ AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([strchr strdup strrchr])
 AC_CHECK_FUNCS([dup2 putenv select setenv strerror],, [AC_MSG_ERROR([seems as if your libraries don't provide an expected function])])
+
+AX_GCC_FUNC_ATTRIBUTE([fallthrough])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

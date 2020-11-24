@@ -56,6 +56,12 @@
 #define UNIX_PATH_MAX 108
 #endif
 
+#ifdef HAVE_FUNC_ATTRIBUTE_FALLTHROUGH
+#define FALLTHROUGH __attribute__ ((fallthrough))
+#else
+#define FALLTHROUGH (void)
+#endif
+
 extern char **environ;
 static char * const * inherited_environ;
 static const char **allowed_programs;
@@ -580,6 +586,7 @@ static void handle_fcgi_request(void)
 			execl(filename, filename, (void *)NULL);
 			cgi_error("502 Bad Gateway", "Cannot execute script", filename);
 
+        FALLTHROUGH;
 		default: /* parent */
 			close(pipe_in[0]);
 			close(pipe_out[1]);
