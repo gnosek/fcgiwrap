@@ -690,14 +690,8 @@ static void prefork(int nchildren)
 }
 
 static int listen_on_fd(int fd) {
-	int one = 1;
-
 	if (listen(fd, 511) < 0) {
 		perror("Failed to listen");
-		return -1;
-	}
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
-		perror("Failed to enable SO_REUSEADDR");
 		return -1;
 	}
 	if (dup2(fd, 0) < 0) {
@@ -785,6 +779,11 @@ invalid_url:
 	fd = socket(sa.sa.sa_family, SOCK_STREAM, 0);
 	if (fd < 0) {
 		perror("Failed to create socket");
+		return -1;
+	}
+	int one = 1;
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
+		perror("Failed to enable SO_REUSEADDR");
 		return -1;
 	}
 	if (bind(fd, &sa.sa, sockaddr_size) < 0) {
