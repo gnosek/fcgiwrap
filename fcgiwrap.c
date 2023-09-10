@@ -56,6 +56,12 @@
 #define UNIX_PATH_MAX 108
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+# define NORETURN __attribute__((__noreturn__))
+#else
+# define NORETURN
+#endif
+
 extern char **environ;
 static char * const * inherited_environ;
 static const char **allowed_programs;
@@ -500,7 +506,7 @@ static bool is_allowed_program(const char *program) {
 	return false;
 }
 
-static void cgi_error(const char *message, const char *reason, const char *filename)
+static void NORETURN cgi_error(const char *message, const char *reason, const char *filename)
 {
 	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
 		message, message);
