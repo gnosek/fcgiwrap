@@ -793,18 +793,30 @@ invalid_url:
 	fd = socket(sa.sa.sa_family, SOCK_STREAM, 0);
 	if (fd < 0) {
 		perror("Failed to create socket");
-		return -1;
+		goto cleanup_socket;
 	}
 	if (bind(fd, &sa.sa, sockaddr_size) < 0) {
 		perror("Failed to bind");
-		return -1;
+		goto cleanup_fd;
 	}
 
 	if (listen_on_fd(fd) < 0) {
-		return -1;
+		goto cleanup_fd;
 	}
 
 	return fd;
+
+cleanup_fd:
+
+	close(fd);
+
+cleanup_socket:
+
+	if(sa.sa.sa_family == AF_UNIX) {
+		unlink(sa.sa_un.sun_path);
+	}
+
+	return -1;
 }
 
 int main(int argc, char **argv)
