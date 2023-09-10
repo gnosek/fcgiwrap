@@ -62,6 +62,8 @@
 # define NORETURN
 #endif
 
+#define FCGI_FD 0
+
 extern char **environ;
 static char * const * inherited_environ;
 static const char **allowed_programs;
@@ -706,8 +708,8 @@ static int listen_on_fd(int fd) {
 		perror("Failed to enable SO_REUSEADDR");
 		return -1;
 	}
-	if (dup2(fd, 0) < 0) {
-		perror("Failed to move socket to fd 0");
+	if (dup2(fd, FCGI_FD) < 0) {
+		fprintf(stderr, "Failed to move socket to fd %d", FCGI_FD);
 		return -1;
 	}
 	if (close(fd) < 0) {
@@ -809,7 +811,7 @@ int main(int argc, char **argv)
 {
 	int nchildren = 1;
 	char *socket_url = NULL;
-	int fd = 0;
+	int fd = FCGI_FD;
 	int c;
 
 	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
@@ -860,6 +862,10 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_SYSTEMD
 	if (sd_listen_fds(true) > 0) {
+		if(socket_url) {
+			perror("warning: a systemd socket has been provding, ignoring '-s'\n");
+		}
+
 		/* systemd woke us up. we should never see more than one FD passed to us. */
 		if (listen_on_fd(SD_LISTEN_FDS_START) < 0) {
 			return 1;
@@ -876,16 +882,15 @@ int main(int argc, char **argv)
 	prefork(nchildren);
 	fcgiwrap_main();
 
-	if (fd) {
-		const char *p = socket_url;
-		close(fd);
+	close(FCGI_FD);
 
-		if (socket_url) {
-			if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
-				p += sizeof("unix:") - 1;
-				unlink(p);
-			}
+	if (fd && socket_url) { // fd > 0 indicates a socket was setup by us
+		const char *p = socket_url;
+		if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+			p += sizeof("unix:") - 1;
+			unlink(p);
 		}
 	}
+
 	return 0;
 }
