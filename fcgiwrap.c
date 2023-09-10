@@ -62,6 +62,12 @@
 # define NORETURN
 #endif
 
+#if defined(__GNUC__)
+# define UNUSED __attribute__((__unused__))
+#else
+# define UNUSED
+#endif
+
 #define FCGI_FD 0
 
 extern char **environ;
@@ -646,6 +652,8 @@ static void fcgiwrap_main(void)
 	while (FCGI_Accept() >= 0 && !sigint_received) {
 		handle_fcgi_request();
 	}
+
+	close(FCGI_FD);
 }
 
 static volatile sig_atomic_t nrunning;
@@ -665,21 +673,26 @@ static void sigchld_handler(int dummy)
 	}
 }
 
+static volatile sig_atomic_t stop_requested;
+
+static void stop_request_handler(int UNUSED signum) {
+	stop_requested = 1;
+}
+
 static void prefork(int nchildren)
 {
 	int startup = 1;
 
-	if (nchildren == 1) {
-		return;
-	}
-
 	signal(SIGCHLD, sigchld_handler);
+	signal(SIGINT, stop_request_handler);
+	signal(SIGTERM, stop_request_handler);
 
-	while (1) {
+	while (!stop_requested) {
 		while (nrunning < nchildren) {
 			pid_t pid = fork();
 			if (pid == 0) {
-				return;
+				fcgiwrap_main();
+				exit(0);
 			} else if (pid != -1) {
 				nrunning++;
 			} else {
@@ -694,6 +707,10 @@ static void prefork(int nchildren)
 		}
 		startup = 0;
 		pause();
+	}
+
+	if(killpg(0, SIGTERM) != 0) {
+		fprintf(stderr, "killpg() encountered an error, child processes may have to be killed");
 	}
 }
 
@@ -891,10 +908,11 @@ int main(int argc, char **argv)
 		}
 	}
 
-	prefork(nchildren);
-	fcgiwrap_main();
-
-	close(FCGI_FD);
+	if(nchildren > 1) {
+		prefork(nchildren);
+	} else {
+		fcgiwrap_main();
+	}
 
 	if (fd && socket_url) { // fd > 0 indicates a socket was setup by us
 		const char *p = socket_url;
