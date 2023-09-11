@@ -56,6 +56,20 @@
 #define UNIX_PATH_MAX 108
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+# define NORETURN __attribute__((__noreturn__))
+#else
+# define NORETURN
+#endif
+
+#if defined(__GNUC__)
+# define UNUSED __attribute__((__unused__))
+#else
+# define UNUSED
+#endif
+
+#define FCGI_FD 0
+
 extern char **environ;
 static char * const * inherited_environ;
 static const char **allowed_programs;
@@ -500,7 +514,7 @@ static bool is_allowed_program(const char *program) {
 	return false;
 }
 
-static void cgi_error(const char *message, const char *reason, const char *filename)
+static void NORETURN cgi_error(const char *message, const char *reason, const char *filename)
 {
 	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
 		message, message);
@@ -638,6 +652,8 @@ static void fcgiwrap_main(void)
 	while (FCGI_Accept() >= 0 && !sigint_received) {
 		handle_fcgi_request();
 	}
+
+	close(FCGI_FD);
 }
 
 static volatile sig_atomic_t nrunning;
@@ -657,21 +673,26 @@ static void sigchld_handler(int dummy)
 	}
 }
 
+static volatile sig_atomic_t stop_requested;
+
+static void stop_request_handler(int UNUSED signum) {
+	stop_requested = 1;
+}
+
 static void prefork(int nchildren)
 {
 	int startup = 1;
 
-	if (nchildren == 1) {
-		return;
-	}
-
 	signal(SIGCHLD, sigchld_handler);
+	signal(SIGINT, stop_request_handler);
+	signal(SIGTERM, stop_request_handler);
 
-	while (1) {
+	while (!stop_requested) {
 		while (nrunning < nchildren) {
 			pid_t pid = fork();
 			if (pid == 0) {
-				return;
+				fcgiwrap_main();
+				exit(0);
 			} else if (pid != -1) {
 				nrunning++;
 			} else {
@@ -687,6 +708,10 @@ static void prefork(int nchildren)
 		startup = 0;
 		pause();
 	}
+
+	if(killpg(0, SIGTERM) != 0) {
+		fprintf(stderr, "killpg() encountered an error, child processes may have to be killed");
+	}
 }
 
 static int listen_on_fd(int fd) {
@@ -700,8 +725,8 @@ static int listen_on_fd(int fd) {
 		perror("Failed to enable SO_REUSEADDR");
 		return -1;
 	}
-	if (dup2(fd, 0) < 0) {
-		perror("Failed to move socket to fd 0");
+	if (dup2(fd, FCGI_FD) < 0) {
+		fprintf(stderr, "Failed to move socket to fd %d", FCGI_FD);
 		return -1;
 	}
 	if (close(fd) < 0) {
@@ -785,25 +810,37 @@ invalid_url:
 	fd = socket(sa.sa.sa_family, SOCK_STREAM, 0);
 	if (fd < 0) {
 		perror("Failed to create socket");
-		return -1;
+		goto cleanup_socket;
 	}
 	if (bind(fd, &sa.sa, sockaddr_size) < 0) {
 		perror("Failed to bind");
-		return -1;
+		goto cleanup_fd;
 	}
 
 	if (listen_on_fd(fd) < 0) {
-		return -1;
+		goto cleanup_fd;
 	}
 
 	return fd;
+
+cleanup_fd:
+
+	close(fd);
+
+cleanup_socket:
+
+	if(sa.sa.sa_family == AF_UNIX) {
+		unlink(sa.sa_un.sun_path);
+	}
+
+	return -1;
 }
 
 int main(int argc, char **argv)
 {
 	int nchildren = 1;
 	char *socket_url = NULL;
-	int fd = 0;
+	int fd = FCGI_FD;
 	int c;
 
 	while ((c = getopt(argc, argv, "c:hfs:p:")) != -1) {
@@ -854,6 +891,10 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_SYSTEMD
 	if (sd_listen_fds(true) > 0) {
+		if(socket_url) {
+			perror("warning: a systemd socket has been provding, ignoring '-s'\n");
+		}
+
 		/* systemd woke us up. we should never see more than one FD passed to us. */
 		if (listen_on_fd(SD_LISTEN_FDS_START) < 0) {
 			return 1;
@@ -867,19 +908,19 @@ int main(int argc, char **argv)
 		}
 	}
 
-	prefork(nchildren);
-	fcgiwrap_main();
+	if(nchildren > 1) {
+		prefork(nchildren);
+	} else {
+		fcgiwrap_main();
+	}
 
-	if (fd) {
+	if (fd && socket_url) { // fd > 0 indicates a socket was setup by us
 		const char *p = socket_url;
-		close(fd);
-
-		if (socket_url) {
-			if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
-				p += sizeof("unix:") - 1;
-				unlink(p);
-			}
+		if (!strncmp(p, "unix:", sizeof("unix:") - 1)) {
+			p += sizeof("unix:") - 1;
+			unlink(p);
 		}
 	}
+
 	return 0;
 }
