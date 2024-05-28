@@ -150,8 +150,8 @@ enum char_class_t {
 static const unsigned char header_state_machine[REPLY_STATE_MAX][CC_MAX] = {
 	[REPLY_STATE_INIT] = {
 		[CC_NORMAL] = REPLY_STATE_HEADER,
-		[CC_CR] = ACTION_ERROR,
-		[CC_LF] = ACTION_ERROR,
+		[CC_CR] = REPLY_STATE_BODY | ACTION_END,
+		[CC_LF] = REPLY_STATE_BODY | ACTION_END,
 	},
 	[REPLY_STATE_HEADER] = {
 		[CC_NORMAL] = REPLY_STATE_HEADER,
@@ -500,6 +500,7 @@ static bool is_allowed_program(const char *program) {
 	return false;
 }
 
+__attribute__((__noreturn__))
 static void cgi_error(const char *message, const char *reason, const char *filename)
 {
 	printf("Status: %s\r\nContent-Type: text/plain\r\n\r\n%s\r\n",
