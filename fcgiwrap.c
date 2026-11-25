@@ -23,6 +23,11 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/* Expose POLLRDHUP on Linux. */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #define NO_FCGI_DEFINES
 
 #include "config.h"
@@ -33,7 +38,12 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/select.h>
+#include <poll.h>
+
+/* POLLRDHUP is available on Linux and recent FreeBSD versions. */
+#ifndef POLLRDHUP
+#define POLLRDHUP 0
+#endif
 #include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -58,6 +68,7 @@
 
 extern char **environ;
 static char * const * inherited_environ;
+static FCGX_Request current_request;
 static const char **allowed_programs;
 static size_t allowed_programs_count;
 
@@ -100,25 +111,6 @@ static int write_all(int fd, char *buf, size_t size)
 	}
 
 	return size;
-}
-
-#define MAX_VA_SENTINEL INT_MIN
-
-static int max_va(int p1, ...)
-{
-	va_list va;
-	int max = p1;
-	int p;
-
-	va_start(va, p1);
-	do {
-		p = va_arg(va, int);
-		if (p > max)
-			max = p;
-	} while (p != MAX_VA_SENTINEL);
-	va_end(va);
-
-	return max;
 }
 
 enum reply_state_t {
@@ -205,7 +197,7 @@ static void fcgi_finish(struct fcgi_context *fc, const char* msg)
 	if (fc->fd_stderr >= 0) close(fc->fd_stderr);
 
 	if (fc->cgi_pid)
-		kill(SIGTERM, fc->cgi_pid);
+		kill(fc->cgi_pid, SIGTERM);
 }
 
 static const char * fcgi_pass_fd(struct fcgi_context *fc, int *fdp, FCGI_FILE *ffp, char *buf, size_t bufsize)
@@ -307,33 +299,36 @@ static bool fcgi_pass_request(struct fcgi_context *fc)
 static void fcgi_pass(struct fcgi_context *fc)
 {
 	char buf[FCGI_BUF_SIZE];
-	fd_set rset;
-	int maxfd = 1 + max_va(fc->fd_stdout, fc->fd_stderr, MAX_VA_SENTINEL);
+	struct pollfd fds[3];
 	int nready;
 	const char *err;
-
 	if (!fcgi_pass_request(fc))
 		return;
-
-	/* now pass CGI reply back */
+	/* Watch peer disconnect even when a stopped CGI emits no output.
+	 * events=POLLRDHUP requests peer shutdown plus unconditional HUP/ERR reporting,
+	 * avoiding spinning on any buffered FastCGI protocol data. */
 	while (fc->fd_stdout >= 0 || fc->fd_stderr >= 0) {
-		FD_ZERO(&rset);
-		if (fc->fd_stdout >= 0) FD_SET(fc->fd_stdout, &rset);
-		if (fc->fd_stderr >= 0) FD_SET(fc->fd_stderr, &rset);
-		nready = select(maxfd, &rset, NULL, NULL, NULL);
+		fds[0] = (struct pollfd){fc->fd_stdout, POLLIN, 0};
+		fds[1] = (struct pollfd){fc->fd_stderr, POLLIN, 0};
+		fds[2] = (struct pollfd){current_request.ipcFd, POLLRDHUP, 0};
+		nready = poll(fds, 3, -1);
 		if (nready < 0) {
-			if (errno == EAGAIN) continue;
+			if (errno == EINTR || errno == EAGAIN) continue;
 			fcgi_finish(fc, "waiting for CGI reply");
 			return;
 		}
-		if (fc->fd_stdout >= 0 && FD_ISSET(fc->fd_stdout, &rset)) {
+		if (fds[2].revents & (POLLRDHUP | POLLHUP | POLLERR | POLLNVAL)) {
+			fcgi_finish(fc, "client disconnected");
+			return;
+		}
+		if (fc->fd_stdout >= 0 && fds[0].revents) {
 			err = fcgi_pass_fd(fc, &fc->fd_stdout, FCGI_stdout, buf, sizeof(buf));
 			if (err) {
 				fcgi_finish(fc, err);
 				return;
 			}
 		}
-		if (fc->fd_stderr >= 0 && FD_ISSET(fc->fd_stderr, &rset)) {
+		if (fc->fd_stderr >= 0 && fds[1].revents) {
 			if (stderr_to_fastcgi)
 				err = fcgi_pass_fd(fc, &fc->fd_stderr, FCGI_stderr, buf, sizeof(buf));
 			else
@@ -344,9 +339,7 @@ static void fcgi_pass(struct fcgi_context *fc)
 			}
 		}
 	}
-
 	fc->cgi_pid = 0;
-
 	fcgi_finish(fc, "reading CGI reply (no response received)");
 }
 
@@ -547,7 +540,7 @@ static void handle_fcgi_request(void)
 			close(pipe_out[1]);
 			close(pipe_err[1]);
 
-			close(FCGI_fileno(FCGI_stdout));
+			close(current_request.ipcFd);
 
 			signal(SIGCHLD, SIG_DFL);
 			signal(SIGPIPE, SIG_DFL);
@@ -635,8 +628,18 @@ static void fcgiwrap_main(void)
 
 	inherited_environ = environ;
 
-	while (FCGI_Accept() >= 0 && !sigint_received) {
+	if (FCGX_Init() != 0 || FCGX_InitRequest(&current_request, 0, 0) != 0)
+		exit(1);
+
+	while (FCGX_Accept_r(&current_request) >= 0 && !sigint_received) {
+		/* FCGI_fileno() cannot expose the accepted FastCGI socket. */
+		FCGI_stdin->fcgx_stream = current_request.in;
+		FCGI_stdout->fcgx_stream = current_request.out;
+		FCGI_stderr->fcgx_stream = current_request.err;
+		environ = current_request.envp;
 		handle_fcgi_request();
+		environ = (char **)inherited_environ;
+		FCGX_Finish_r(&current_request);
 	}
 }
 
